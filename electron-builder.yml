@@ -1,0 +1,37 @@
+appId: com.eduar.nitroscribe
+productName: NitroScribe
+copyright: Copyright (c) 2026 Eduard Georgescu. MIT License.
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+  - resources/**
+asarUnpack:
+  - resources/**
+  # sherpa-onnx is a native addon (plus onnxruntime DLLs) and must live outside the asar archive.
+  - '**/node_modules/sherpa-onnx-*/**'
+npmRebuild: false
+# Hardening: the installed NitroScribe.exe can't be used as a generic Node.js runtime or have code
+# injected through environment variables / debugger flags, and app.asar is integrity-checked.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  enableCookieEncryption: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: NitroScribe
+  artifactName: ${productName}-Setup-${version}.${ext}

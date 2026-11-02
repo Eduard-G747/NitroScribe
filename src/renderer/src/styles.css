@@ -1,0 +1,241 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, sans-serif;
+  --font-serif: 'Newsreader Variable', Georgia, 'Times New Roman', serif;
+  --color-app: var(--app);
+  --color-side: var(--side);
+  --color-card: var(--card);
+  --color-edge: var(--edge);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-tile: var(--tile);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-cal: var(--cal);
+  --color-ai: var(--ai);
+  --color-bubble: var(--bubble);
+  --color-bubble-me: var(--bubble-me);
+  --color-danger: var(--danger);
+}
+
+/* Light: warm paper. Dark: soft charcoal. */
+:root {
+  --app: #fdfdfc;
+  --side: #f5f5f2;
+  --card: #ffffff;
+  --edge: #e7e6e1;
+  --ink: #23221f;
+  --muted: #75746d;
+  --faint: #a8a7a0;
+  --hover: rgb(0 0 0 / 0.04);
+  --active: rgb(0 0 0 / 0.065);
+  --tile: #f0efeb;
+  --accent: #2f9e5e;
+  --accent-soft: rgb(47 158 94 / 0.11);
+  --cal: #41b6c6;
+  --ai: #8d8c86;
+  --bubble: #f1f0ec;
+  --bubble-me: rgb(47 158 94 / 0.1);
+  --danger: #d4483a;
+  color-scheme: light;
+}
+
+.dark {
+  --app: #292929;
+  --side: #212121;
+  --card: #363635;
+  --edge: #424241;
+  --ink: #eaeae3;
+  --muted: #a09f98;
+  --faint: #6f6e69;
+  --hover: rgb(255 255 255 / 0.045);
+  --active: rgb(255 255 255 / 0.075);
+  --tile: #3c3c3b;
+  --accent: #55c886;
+  --accent-soft: rgb(85 200 134 / 0.14);
+  --cal: #9fe1e7;
+  --ai: #8e8d87;
+  --bubble: #333332;
+  --bubble-me: rgb(85 200 134 / 0.13);
+  --danger: #ef6b5b;
+  color-scheme: dark;
+}
+
+@utility serif {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-app font-sans text-ink antialiased;
+    font-size: 13.5px;
+    overflow: hidden;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent) transparent;
+  }
+  button {
+    cursor: default;
+  }
+  input,
+  textarea,
+  select {
+    color: inherit;
+  }
+}
+
+@layer components {
+  .drag {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Notes editor */
+  .notes {
+    @apply text-[15px] leading-[1.7] text-ink outline-none;
+  }
+  .notes > * + * {
+    margin-top: 0.35em;
+  }
+  .notes h1 {
+    @apply serif mt-6 text-[26px] font-medium;
+  }
+  .notes h2 {
+    @apply serif mt-6 text-[21px] font-medium;
+  }
+  .notes h3 {
+    @apply mt-6 text-[15.5px] font-semibold;
+  }
+  .notes h4 {
+    @apply mt-4 text-[15px] font-semibold;
+  }
+  .notes > h1:first-child,
+  .notes > h2:first-child,
+  .notes > h3:first-child {
+    margin-top: 0;
+  }
+  .notes ul {
+    @apply list-disc pl-6;
+  }
+  .notes ol {
+    @apply list-decimal pl-6;
+  }
+  .notes li > p {
+    margin: 0;
+  }
+  .notes li::marker {
+    color: var(--faint);
+  }
+  .notes ul[data-type='taskList'] {
+    @apply list-none pl-1;
+  }
+  .notes ul[data-type='taskList'] li {
+    @apply flex items-start gap-2;
+  }
+  .notes ul[data-type='taskList'] li > label {
+    @apply mt-[5px] flex-none;
+  }
+  .notes ul[data-type='taskList'] li > label input {
+    accent-color: var(--accent);
+  }
+  .notes ul[data-type='taskList'] li > div {
+    @apply flex-1;
+  }
+  .notes ul[data-type='taskList'] li[data-checked='true'] > div {
+    @apply text-faint line-through;
+  }
+  .notes blockquote {
+    @apply border-l-2 border-edge pl-3 text-muted;
+  }
+  .notes code {
+    @apply rounded bg-tile px-1 py-0.5 text-[13px];
+  }
+  .notes pre {
+    @apply rounded-lg bg-tile p-3 text-[13px];
+  }
+  .notes a {
+    @apply text-accent underline decoration-accent/40 underline-offset-2;
+  }
+  .notes hr {
+    @apply my-4 border-edge;
+  }
+  .notes .ai-text {
+    color: var(--ai);
+  }
+  .notes p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    @apply pointer-events-none float-left h-0 text-faint;
+  }
+
+  /* Read-only markdown (chat answers, streaming notes) */
+  .md {
+    @apply prose prose-sm max-w-none prose-headings:font-semibold prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5;
+    --tw-prose-body: var(--ink);
+    --tw-prose-headings: var(--ink);
+    --tw-prose-bold: var(--ink);
+    --tw-prose-links: var(--accent);
+    --tw-prose-bullets: var(--faint);
+    --tw-prose-counters: var(--faint);
+    --tw-prose-quotes: var(--muted);
+    --tw-prose-quote-borders: var(--edge);
+    --tw-prose-code: var(--ink);
+    --tw-prose-hr: var(--edge);
+    --tw-prose-th-borders: var(--edge);
+    --tw-prose-td-borders: var(--edge);
+  }
+
+  .bars span {
+    @apply inline-block w-[3px] rounded-full bg-current transition-[height] duration-100;
+  }
+
+  .card {
+    @apply rounded-xl border border-edge bg-card;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--tile) 25%, var(--hover) 50%, var(--tile) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
