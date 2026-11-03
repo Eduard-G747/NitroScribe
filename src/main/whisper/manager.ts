@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { WhisperModelId, WhisperStatus } from '@shared/types'
 import { SPEAKER_MODEL, WHISPER_BINARIES, WHISPER_MODELS, WHISPER_RELEASE, whisperModel } from '@shared/whisperModels'
+
+const MAC = process.platform === 'darwin'
 import { readJson } from '../util/fsx'
 import { log } from '../util/log'
 import { downloadVerified } from './download'
@@ -117,8 +119,12 @@ export class WhisperManager extends EventEmitter {
     super()
   }
 
+  /** Windows downloads the engine into the data folder; the Mac app ships a Metal build in its resources. */
   get binDir() {
-    return join(this.dir, 'bin')
+    if (!MAC) return join(this.dir, 'bin')
+    if (process.env.NITROSCRIBE_WHISPER_BIN) return process.env.NITROSCRIBE_WHISPER_BIN
+    const bundled = process.resourcesPath ? join(process.resourcesPath, 'whisper') : ''
+    return bundled && existsSync(bundled) ? bundled : join(process.cwd(), 'whisper-bin', 'mac')
   }
 
   get modelsDir() {
@@ -126,7 +132,7 @@ export class WhisperManager extends EventEmitter {
   }
 
   private get serverExe() {
-    return join(this.binDir, 'whisper-server.exe')
+    return join(this.binDir, MAC ? 'whisper-server' : 'whisper-server.exe')
   }
 
   modelPath(id: WhisperModelId) {
@@ -141,13 +147,17 @@ export class WhisperManager extends EventEmitter {
     await fs.mkdir(this.modelsDir, { recursive: true })
     await fs.mkdir(this.logDir, { recursive: true })
     await this.refresh()
-    this.status.gpu = await detectGpu()
+    this.status.gpu = MAC ? (process.arch === 'arm64' ? { name: 'Apple GPU (Metal)', vramMb: 0 } : null) : await detectGpu()
     this.emitStatus()
   }
 
   async refresh(): Promise<WhisperStatus> {
-    const variant = await readJson<{ variant: 'cuda' | 'cpu' }>(join(this.binDir, 'variant.json'))
-    this.status.binary = variant && existsSync(this.serverExe) ? variant.variant : null
+    if (MAC) {
+      this.status.binary = existsSync(this.serverExe) ? 'metal' : null
+    } else {
+      const variant = await readJson<{ variant: 'cuda' | 'cpu' }>(join(this.binDir, 'variant.json'))
+      this.status.binary = variant && existsSync(this.serverExe) ? variant.variant : null
+    }
     this.status.installedModels = WHISPER_MODELS.filter((m) => existsSync(this.modelPath(m.id))).map((m) => m.id)
     this.status.speakerModel = existsSync(this.speakerModelPath)
     this.emitStatus()
@@ -200,6 +210,7 @@ export class WhisperManager extends EventEmitter {
       this.status.download = { label, received, total }
       this.emitStatus()
     }
+    if (MAC && !this.status.binary) throw new Error('This build of NitroScribe is missing its speech engine. Download the app again.')
     if (!this.status.binary) {
       const variant = this.status.gpu ? 'cuda' : 'cpu'
       const remote = WHISPER_BINARIES[variant]
@@ -270,6 +281,7 @@ export class WhisperManager extends EventEmitter {
     // and we already send only speech regions (see transcription/windows.ts).
     args.push('-l', 'auto', '-nlp', '-sns')
     if (config.useGpu && this.status.binary === 'cuda') args.push('-dev', String(config.gpuDevice))
+    if (!config.useGpu && this.status.binary === 'metal') args.push('-ng')
     else args.push('-ng')
     // A stale CUDA_VISIBLE_DEVICES (e.g. "1" on a single-GPU laptop) hides the GPU entirely; we select the device with -dev instead.
     const env = { ...process.env }
@@ -291,7 +303,7 @@ export class WhisperManager extends EventEmitter {
       this.log?.write(text)
       for (const line of text.split(/\r?\n/)) {
         if (!line.trim()) continue
-        if (/using CUDA\d* backend/i.test(line)) device = 'gpu'
+        if (/using (CUDA\d*|Metal|MTL\d*) backend/i.test(line)) device = 'gpu'
         else if (/no GPU found/i.test(line)) device = 'cpu'
         tail.push(line)
         if (tail.length > 40) tail.shift()

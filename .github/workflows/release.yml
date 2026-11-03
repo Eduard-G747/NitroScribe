@@ -1,31 +1,95 @@
-# Push a tag like v1.0.1 to build the Windows installer and attach it to a GitHub Release.
+# When you publish a release (on github.com, or by pushing a v* tag and creating a release from it),
+# this builds the Windows installer from the source and attaches it, unless the release already has one.
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build the installer for (e.g. v1.0.0)
+        required: true
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      has-exe: ${{ steps.assets.outputs.has-exe }}
+      has-dmg: ${{ steps.assets.outputs.has-dmg }}
+    steps:
+      - id: assets
+        run: |
+          assets=$(gh release view "$TAG" --json assets -q '.assets[].name')
+          if grep -qi '\.exe$' <<< "$assets"; then echo "has-exe=true" >> "$GITHUB_OUTPUT"; fi
+          if grep -qi '\.dmg$' <<< "$assets"; then echo "has-dmg=true" >> "$GITHUB_OUTPUT"; fi
+
+  mac:
+    needs: check
+    if: needs.check.outputs.has-dmg != 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build the speech engine (whisper.cpp with Metal, same release as Windows)
+        run: |
+          git clone --depth 1 --branch b5454 https://github.com/ggml-org/whisper.cpp "$RUNNER_TEMP/whisper.cpp"
+          cmake -S "$RUNNER_TEMP/whisper.cpp" -B "$RUNNER_TEMP/wb" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+          cmake --build "$RUNNER_TEMP/wb" --config Release -j 4 --target whisper-server
+          mkdir -p whisper-bin/mac
+          cp "$RUNNER_TEMP/wb/bin/whisper-server" whisper-bin/mac/
+          file whisper-bin/mac/whisper-server
+      - run: npm ci
+      - name: Use the release tag as the app version
+        run: |
+          v="${TAG#v}"
+          if [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then npm version "$v" --no-git-tag-version --allow-same-version; fi
+      - run: npm test
+      - run: npx electron-vite build && npx electron-builder --mac --arm64 --publish never
+      - name: Attach the Mac app to the release
+        run: |
+          cd dist
+          shasum -a 256 NitroScribe-*.dmg > SHA256SUMS-mac.txt
+          gh release upload "$TAG" NitroScribe-*.dmg SHA256SUMS-mac.txt --clobber
+
   windows:
+    needs: check
+    if: needs.check.outputs.has-exe != 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Use the release tag as the app version
+        shell: bash
+        run: |
+          v="${TAG#v}"
+          if [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then npm version "$v" --no-git-tag-version --allow-same-version; fi
       - run: npm run typecheck
       - run: npm test
       - run: npm run dist:ci
-      - name: Publish the installer
+      - name: Attach the installer to the release
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
           sha256sum NitroScribe-Setup-*.exe > SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" NitroScribe-Setup-*.exe SHA256SUMS.txt --title "NitroScribe $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$TAG" NitroScribe-Setup-*.exe SHA256SUMS.txt --clobber

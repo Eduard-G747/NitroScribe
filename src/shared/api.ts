@@ -67,6 +67,8 @@ export interface NitroScribeApi {
     onSegments(cb: (event: SegmentsEvent) => void): Unsubscribe
     onFinished(cb: (meetingId: string) => void): Unsubscribe
   }
+  /** 'win32', 'darwin', … */
+  platform: string
   imports: {
     /** Opens a file picker; null when cancelled. */
     pick(): Promise<ImportPreview | null>

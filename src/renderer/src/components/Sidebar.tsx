@@ -58,7 +58,7 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[232px] flex-none flex-col bg-side">
-      <div className="drag flex h-11 flex-none items-center gap-0.5 px-2.5">
+      <div className="drag traffic-gap flex h-11 flex-none items-center gap-0.5 px-2.5">
         <IconButton label="Hide sidebar" onClick={toggleSidebar}>
           <PanelLeft className="size-4" strokeWidth={1.75} />
         </IconButton>

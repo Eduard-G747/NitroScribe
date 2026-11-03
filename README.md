@@ -48,6 +48,14 @@ Settings → **Privacy & data** lists everything that touches the network, live.
 
 **Requirements:** Windows 10/11 (64-bit), about 3 GB of disk space, and 8 GB+ of RAM. An NVIDIA GPU with 4 GB+ VRAM is recommended; it also runs on the CPU, just more slowly.
 
+### Mac (Apple Silicon)
+
+1. Download `NitroScribe-x.y.z-mac-arm64.dmg` from [Releases](../../releases), open it, and drag NitroScribe into Applications.
+2. The app isn't notarized by Apple, so the first time you open it, go to **System Settings → Privacy & Security** and click **Open Anyway**.
+3. Allow the **Microphone** prompt. Also allow **Screen & System Audio Recording** if you want the other side of the call transcribed: macOS only shares computer audio that way, and NitroScribe never keeps the picture.
+
+Transcription runs on the Mac's GPU (Metal), and the models download on first launch (about 1.1 GB). Requires macOS 13 or later on an M-series Mac. If macOS won't share the call's audio, NitroScribe transcribes your microphone only and says so.
+
 ## Using it
 
 1. Click **New note** (Ctrl+N) when a call starts. NitroScribe starts transcribing.

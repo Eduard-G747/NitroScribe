@@ -76,7 +76,7 @@ function GeneralTab() {
         </Field>
       </Section>
       <Section title="Appearance">
-        <Field inline label="Theme" hint="Follow Windows, or always use light or dark.">
+        <Field inline label="Theme" hint="Follow your system, or always use light or dark.">
           <Segmented
             value={s.general.theme}
             onChange={(theme) => void update({ general: { theme } })}
@@ -92,7 +92,7 @@ function GeneralTab() {
         <Field inline label="Keep running in the tray when closed" hint="Lets calendar reminders work and keeps recordings going if you close the window.">
           <Toggle checked={s.general.closeToTray} onChange={(v) => void update({ general: { closeToTray: v } })} />
         </Field>
-        <Field inline label="Launch when Windows starts" hint="Starts quietly in the tray. Applies to the installed app.">
+        <Field inline label="Launch at login" hint="Starts quietly in the tray (menu bar on Mac). Applies to the installed app.">
           <Toggle checked={s.general.launchAtLogin} onChange={(v) => void update({ general: { launchAtLogin: v } })} />
         </Field>
         <Field inline label="Remind me when a calendar meeting starts" hint="Shows a notification you can click to start taking notes.">
@@ -146,7 +146,7 @@ function TranscriptionTab() {
         <div className="grid grid-cols-3 gap-3 py-3 text-[12.5px]">
           <div className="rounded-xl border border-edge bg-card p-3">
             <div className="text-faint">Engine</div>
-            <div className="mt-0.5 font-medium">{whisper?.binary ? (whisper.binary === 'cuda' ? 'Installed (NVIDIA CUDA)' : 'Installed (CPU)') : 'Not installed'}</div>
+            <div className="mt-0.5 font-medium">{whisper?.binary ? ({ cuda: 'Installed (NVIDIA CUDA)', metal: 'Installed (Apple GPU)', cpu: 'Installed (CPU)' } as const)[whisper.binary] : 'Not installed'}</div>
           </div>
           <div className="rounded-xl border border-edge bg-card p-3">
             <div className="text-faint">Graphics card</div>
@@ -410,7 +410,7 @@ export function AiTab() {
             label="API key"
             hint={
               <>
-                Stored encrypted with Windows (DPAPI) on this PC.{' '}
+                Stored encrypted on this computer (Windows DPAPI or the macOS Keychain).{' '}
                 {preset.keyUrl && (
                   <button className="inline-flex items-center gap-0.5 font-medium text-accent underline" onClick={() => void window.api.app.openExternal(preset.keyUrl!)}>
                     Get a key <ExternalLink className="size-3" />
@@ -760,7 +760,7 @@ function DataTab() {
           </Button>
         </div>
       </Section>
-      <div className="text-[12px] text-faint">NitroScribe {info?.version} · API keys are encrypted with your Windows account.</div>
+      <div className="text-[12px] text-faint">NitroScribe {info?.version} · API keys are encrypted with your computer account.</div>
     </>
   )
 }

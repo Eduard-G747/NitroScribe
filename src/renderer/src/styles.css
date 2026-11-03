@@ -68,6 +68,17 @@
   color-scheme: dark;
 }
 
+/* Room for the window buttons: Windows' caption buttons sit top-right, macOS traffic lights top-left. */
+.caption-gap {
+  padding-right: 150px;
+}
+[data-platform='darwin'] .caption-gap {
+  padding-right: 12px;
+}
+[data-platform='darwin'] .traffic-gap {
+  padding-left: 84px;
+}
+
 @utility serif {
   font-family: var(--font-serif);
   font-optical-sizing: auto;

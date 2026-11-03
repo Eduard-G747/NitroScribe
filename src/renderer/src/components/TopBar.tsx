@@ -3,12 +3,12 @@ import type { ReactNode } from 'react'
 import { useApp } from '../lib/store'
 import { Button, IconButton } from './ui'
 
-/** The draggable title bar of the main area; leaves room for the Windows caption buttons. */
+/** The draggable title bar of the main area; leaves room for the window buttons. */
 export function TopBar({ left, children }: { left?: ReactNode; children?: ReactNode }) {
   const collapsed = useApp((s) => s.sidebarCollapsed)
   const { toggleSidebar, setSearchOpen, newMeeting, openImport } = useApp.getState()
   return (
-    <div className="drag flex h-11 flex-none items-center gap-1.5 pl-3 pr-[150px]">
+    <div className={`drag caption-gap flex h-11 flex-none items-center gap-1.5 pl-3 ${collapsed ? 'traffic-gap' : ''}`}>
       {collapsed && (
         <>
           <IconButton label="Show sidebar" onClick={toggleSidebar}>

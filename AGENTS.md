@@ -11,7 +11,7 @@ Electron 44 + electron-vite 6 + React 19 + Tailwind 4 + TipTap 3. Windows-first.
 - `npm test`: unit tests (vitest, `test/*.test.ts`)
 - `npm run dist`: typecheck, build, and create the NSIS installer in `dist/`. `npm run dist:dir` skips the installer.
 - `python scripts/make-icons.py` (needs Pillow) regenerates every icon from `build/icon-source.png` with squircle corners: app/installer icon, window icon, in-app logo, and tray icons.
-- Releases: pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the installer and attaches it plus `SHA256SUMS.txt` to a GitHub Release. CI (`ci.yml`) runs typecheck and unit tests. Actions are pinned by commit SHA.
+- Releases: publishing a GitHub Release (web UI or `gh release create`) runs `.github/workflows/release.yml`. It builds the installer at the release tag's version and attaches it plus `SHA256SUMS.txt`, unless the release already has an `.exe`. It can also be run manually for a tag. CI (`ci.yml`) runs typecheck and unit tests on every push. Actions are pinned by commit SHA.
 
 Integration tests need the whisper.cpp CUDA build and models in `%TEMP%\whisper-bench`, plus the voice model in `%TEMP%\spk`:
 - `INTEGRATION=1 npx vitest run test/integration/session.test.ts`: speaker attribution and echo
@@ -22,6 +22,13 @@ End-to-end (Playwright driving the built app; screenshots go to `%TEMP%\nitroscr
 - `node scripts/e2e.mjs ui|full|import|onboarding|install|packaged`
 - `full` and `import` use a local Ollama model (`OLLAMA_MODEL`, default `llama3.2:3b-instruct-q4_K_M`).
 - `packaged` runs `dist/win-unpacked` (or `APP_EXE`) against the engine installed in `%APPDATA%\NitroScribe`. Release builds disable the inspector fuse, which Playwright needs, so build the test copy with `npx electron-builder --win --x64 --dir -c.electronFuses.enableNodeCliInspectArguments=true`.
+
+## macOS
+
+- Built only in CI (`mac` job in `release.yml`, `macos-latest`, arm64). The job compiles `whisper-server` from whisper.cpp tag `b5454` with Metal into `whisper-bin/mac/`, which electron-builder bundles as `Resources/whisper`. The app is ad-hoc signed (`identity: '-'`, hardened runtime off) and not notarized.
+- `WhisperManager` uses the bundled binary on darwin (override with `NITROSCRIBE_WHISPER_BIN`) and only downloads models. `status.binary` is `'metal'`.
+- System audio relies on Chromium's ScreenCaptureKit loopback (`MacLoopbackAudioForScreenShare` feature switch) and is untested; without it the recorder falls back to mic-only.
+- Window: native traffic lights (`trafficLightPosition`), `[data-platform=darwin]` CSS swaps the caption-button gap for a traffic-light gap; ⌘ works for all shortcuts.
 
 ## Environment gotchas
 

@@ -4,6 +4,8 @@ import '@fontsource-variable/newsreader'
 import { App } from './App'
 import './styles.css'
 
+document.documentElement.dataset.platform = window.api.platform
+
 // Follow the theme chosen in Settings (main sets nativeTheme, which drives prefers-color-scheme).
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const applyTheme = () => document.documentElement.classList.toggle('dark', media.matches)

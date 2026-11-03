@@ -275,7 +275,7 @@ export interface DownloadProgress {
 }
 
 export interface WhisperStatus {
-  binary: 'cuda' | 'cpu' | null
+  binary: 'cuda' | 'cpu' | 'metal' | null
   installedModels: WhisperModelId[]
   /** Voice model used to tell speakers apart. */
   speakerModel: boolean

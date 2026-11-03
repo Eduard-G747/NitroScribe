@@ -7,6 +7,12 @@ export interface TrayActions {
   quit: () => void
 }
 
+/** The macOS menu bar expects ~18 pt icons; Windows scales the 32 px tray icon itself. */
+function icon(path: string) {
+  const img = nativeImage.createFromPath(path)
+  return process.platform === 'darwin' ? img.resize({ width: 18, height: 18 }) : img
+}
+
 export class AppTray {
   private tray: Tray
   private recording = false
@@ -15,7 +21,7 @@ export class AppTray {
     private icons: { idle: string; recording: string },
     private actions: TrayActions
   ) {
-    this.tray = new Tray(nativeImage.createFromPath(icons.idle))
+    this.tray = new Tray(icon(icons.idle))
     this.tray.setToolTip('NitroScribe')
     this.tray.on('click', () => actions.show())
     this.render()
@@ -24,7 +30,7 @@ export class AppTray {
   setRecording(recording: boolean): void {
     if (recording === this.recording) return
     this.recording = recording
-    this.tray.setImage(nativeImage.createFromPath(recording ? this.icons.recording : this.icons.idle))
+    this.tray.setImage(icon(recording ? this.icons.recording : this.icons.idle))
     this.tray.setToolTip(recording ? 'NitroScribe: recording' : 'NitroScribe')
     this.render()
   }

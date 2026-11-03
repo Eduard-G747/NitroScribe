@@ -8,6 +8,7 @@ import {
   dialog,
   ipcMain,
   nativeTheme,
+  systemPreferences,
   safeStorage,
   session,
   shell,
@@ -36,10 +37,14 @@ const devServer = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefine
 // Lets tests (or a portable setup) keep all data in a separate folder.
 if (process.env.NITROSCRIBE_DATA_DIR) app.setPath('userData', process.env.NITROSCRIBE_DATA_DIR)
 
+const MAC = process.platform === 'darwin'
+// System-audio capture on macOS (ScreenCaptureKit); Windows uses WASAPI loopback without flags.
+if (MAC) app.commandLine.appendSwitch('enable-features', 'MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride')
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.setAppUserModelId('com.eduar.nitroscribe')
+  if (process.platform === 'win32') app.setAppUserModelId('com.eduar.nitroscribe')
   void app.whenReady().then(main)
 }
 
@@ -113,7 +118,7 @@ async function main() {
   }
 
   const applyLoginItem = (s: Settings) => {
-    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.launchAtLogin, args: ['--hidden'] })
+    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.launchAtLogin, ...(MAC ? { openAsHidden: true } : { args: ['--hidden'] }) })
   }
   applyLoginItem(settings.get())
 
@@ -122,7 +127,7 @@ async function main() {
   nativeTheme.themeSource = settings.get().general.theme
   nativeTheme.on('updated', () => {
     if (!win || win.isDestroyed()) return
-    win.setTitleBarOverlay({ ...themeColors(), height: 44 })
+    if (!MAC) win.setTitleBarOverlay({ ...themeColors(), height: 44 })
     win.setBackgroundColor(themeColors().color)
   })
 
@@ -137,7 +142,8 @@ async function main() {
     backgroundColor: themeColors().color,
     icon: resource('icon.png'),
     titleBarStyle: 'hidden',
-    titleBarOverlay: { ...themeColors(), height: 44 },
+    // macOS draws its own traffic lights; Windows gets the caption-button overlay.
+    ...(MAC ? { trafficLightPosition: { x: 16, y: 15 } } : { titleBarOverlay: { ...themeColors(), height: 44 } }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -191,6 +197,7 @@ async function main() {
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
 
   const menu: MenuItemConstructorOptions[] = [
+    ...(MAC ? ([{ role: 'appMenu' }] as MenuItemConstructorOptions[]) : []),
     { role: 'editMenu' },
     {
       label: 'View',
@@ -232,6 +239,7 @@ async function main() {
   })
 
   // --- Tray -----------------------------------------------------------------------------
+  app.on('activate', () => showWindow())
   const tray = new AppTray(
     { idle: resource('tray.png'), recording: resource('tray-recording.png') },
     {
@@ -332,7 +340,13 @@ async function main() {
   })
   handle('meetings:search', (q: string) => meetings.search(q))
 
-  handle('recording:start', (id: string) => recorder.start(id))
+  handle('recording:start', async (id: string) => {
+    // macOS asks for microphone access once; Windows handles it in its privacy settings.
+    if (MAC && !(await systemPreferences.askForMediaAccess('microphone'))) {
+      throw new Error('macOS blocked the microphone. Allow NitroScribe in System Settings → Privacy & Security → Microphone.')
+    }
+    return recorder.start(id)
+  })
   handle('recording:stop', (reason?: string) => {
     log(`stop requested by the window${reason ? `: ${reason}` : ''}`)
     return recorder.stop()

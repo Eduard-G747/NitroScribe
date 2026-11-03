@@ -26,16 +26,17 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const s = useApp.getState()
       const key = e.key.toLowerCase()
-      if (e.ctrlKey && key === 'n') {
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && key === 'n') {
         e.preventDefault()
         void s.newMeeting({ record: true })
-      } else if (e.ctrlKey && key === 'k') {
+      } else if (mod && key === 'k') {
         e.preventDefault()
         s.setSearchOpen(!s.searchOpen)
-      } else if (e.ctrlKey && e.key === ',') {
+      } else if (mod && e.key === ',') {
         e.preventDefault()
         s.openSettings()
-      } else if (e.ctrlKey && e.key === '\\') {
+      } else if (mod && e.key === '\\') {
         e.preventDefault()
         s.toggleSidebar()
       }

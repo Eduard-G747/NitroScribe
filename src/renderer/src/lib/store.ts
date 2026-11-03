@@ -174,7 +174,9 @@ export const useApp = create<Store>((set, get) => {
       get().toast(
         'error',
         denied
-          ? 'Windows blocked the microphone. Turn on Settings → Privacy & security → Microphone → "Let desktop apps access your microphone".'
+          ? api.platform === 'darwin'
+            ? 'macOS blocked the microphone. Allow NitroScribe in System Settings → Privacy & Security → Microphone.'
+            : 'Windows blocked the microphone. Turn on Settings → Privacy & security → Microphone → "Let desktop apps access your microphone".'
           : `Could not access the microphone: ${(err as Error).message}`
       )
       return false

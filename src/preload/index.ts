@@ -39,6 +39,7 @@ const api: NitroScribeApi = {
     onSegments: on('recording:segments'),
     onFinished: on('recording:finished')
   },
+  platform: process.platform,
   imports: {
     pick: () => invoke('import:pick'),
     parse: (data, fileName) => invoke('import:parse', data, fileName),

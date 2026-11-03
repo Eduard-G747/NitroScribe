@@ -22,11 +22,30 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
   enableCookieEncryption: true
+  resetAdHocDarwinSignature: true
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: build/icon.png
+# Apple Silicon only. The release workflow compiles whisper-server (Metal) into whisper-bin/mac first.
+# Ad-hoc signed (no Apple Developer account), so macOS asks the user to approve it on first launch.
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.productivity
+  icon: build/icon.png
+  identity: '-'
+  hardenedRuntime: false
+  extraResources:
+    - from: whisper-bin/mac
+      to: whisper
+  extendInfo:
+    NSMicrophoneUsageDescription: NitroScribe transcribes your side of the call on this Mac.
+    NSAudioCaptureUsageDescription: NitroScribe transcribes the other side of the call on this Mac.
+dmg:
+  artifactName: ${productName}-${version}-mac-arm64.${ext}
 nsis:
   oneClick: false
   perMachine: false
