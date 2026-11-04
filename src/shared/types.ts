@@ -106,6 +106,21 @@ export interface ImportPreview {
   suggestedMe?: string
 }
 
+export interface AudioImportRequest {
+  title: string
+  startedAt: string
+  fileName: string
+  durationMs: number
+}
+
+export interface AudioImportProgress {
+  meetingId: string
+  /** 0–1, based on how far into the recording the transcript has reached. */
+  progress: number
+  done?: boolean
+  error?: string
+}
+
 export interface ImportRequest {
   title: string
   startedAt: string
@@ -130,6 +145,7 @@ export type MeetingPatch = Partial<
     | 'attendees'
     | 'calendarEvent'
     | 'speakers'
+    | 'startedAt'
   >
 >
 

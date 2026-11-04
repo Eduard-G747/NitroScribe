@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
 import { providerPreset } from '@shared/providers'
-import type { MeetingSpeaker, RecordingState, SegmentsEvent, WhisperStatus } from '@shared/types'
+import type { Meeting, MeetingSpeaker, RecordingState, SegmentsEvent, WhisperStatus } from '@shared/types'
 import { OnlineDiarizer } from './speakers/cluster'
 import type { Embedder } from './speakers/embedder'
 import type { VoiceLibrary } from './speakers/voices'
@@ -41,6 +41,7 @@ export class RecordingController extends EventEmitter {
     engine: 'idle'
   }
   private session: TranscriptionSession | null = null
+  private fileJob: { meetingId: string; session: TranscriptionSession } | null = null
   private embedder: Embedder | null = null
   private powerSaverNoticeShown = false
 
@@ -81,20 +82,22 @@ export class RecordingController extends EventEmitter {
     return { embedder: this.embedder, diarizer: new OnlineDiarizer(speakers, this.voices.list()) }
   }
 
-  async start(meetingId: string): Promise<RecordingState> {
-    if (this.state.status === 'recording' && this.state.meetingId === meetingId) return this.getState()
-    if (this.state.status !== 'idle') throw new Error('Another meeting is still being recorded or finished. Stop it first.')
+  private assertEngine() {
     const t = this.settings.get().transcription
     if (!this.whisper.isReady(t.model) && !this.whisper.isInstalling) {
       throw new Error('Local transcription is not set up yet. Open Settings → Transcription to download the speech model.')
     }
-    const now = Date.now()
-    const meeting = await this.meetings.markStarted(meetingId, new Date(now).toISOString())
+  }
+
+  /** A transcription session that saves into `meetingId` and streams segments to the window. */
+  private createSession(meetingId: string, meeting: Meeting, timeBaseMs: number, onProgress?: (endMs: number) => void): TranscriptionSession {
+    const t = this.settings.get().transcription
     const config = { model: t.model, useGpu: t.useGpu, gpuDevice: t.gpuDevice }
     const diarization = this.diarization(Object.values(meeting.speakers ?? {}))
-    this.session = new TranscriptionSession(
+    log(`session for meeting ${meetingId}: model ${t.model}, language ${t.language}, gpu ${t.useGpu}, speakers ${diarization ? 'on' : 'off'}`)
+    return new TranscriptionSession(
       {
-        timeBaseMs: now - Date.parse(meeting.startedAt ?? new Date(now).toISOString()),
+        timeBaseMs,
         language: t.language,
         vocabulary: t.vocabulary,
         context: meeting.transcript.slice(-6).map((s) => s.text).join(' ')
@@ -104,6 +107,7 @@ export class RecordingController extends EventEmitter {
         onSegments: (added, removed) => {
           void this.meetings.applySegments(meetingId, added, removed)
           this.emitSegments({ meetingId, added, removed })
+          if (onProgress && added.length) onProgress(added.reduce((m, s) => Math.max(m, s.end), 0))
         },
         onSpeakers: async (incoming) => {
           const speakers = await this.meetings.mergeSpeakers(meetingId, incoming)
@@ -113,7 +117,7 @@ export class RecordingController extends EventEmitter {
           const speakers = await this.meetings.relabel(meetingId, relabeled, incoming)
           this.emitSegments({ meetingId, added: [], removed: [], relabeled, speakers })
         },
-        onPending: (pendingSeconds) => this.set({ pendingSeconds }),
+        onPending: (pendingSeconds) => !onProgress && this.set({ pendingSeconds }),
         onError: (message) => {
           log('transcription error:', message)
           this.emit('error', message)
@@ -125,7 +129,23 @@ export class RecordingController extends EventEmitter {
       undefined,
       diarization
     )
-    log(`recording started: meeting ${meetingId}, model ${t.model}, language ${t.language}, gpu ${t.useGpu}, speakers ${diarization ? 'on' : 'off'}`)
+  }
+
+  async start(meetingId: string): Promise<RecordingState> {
+    if (this.state.status === 'recording' && this.state.meetingId === meetingId) return this.getState()
+    if (this.state.status !== 'idle') throw new Error('Another meeting is still being recorded or finished. Stop it first.')
+    if (this.fileJob) throw new Error('A recording file is still being transcribed. Wait for it to finish first.')
+    this.assertEngine()
+    const t = this.settings.get().transcription
+    const config = { model: t.model, useGpu: t.useGpu, gpuDevice: t.gpuDevice }
+    const now = Date.now()
+    const meeting = await this.meetings.markStarted(meetingId, new Date(now).toISOString())
+    const sinceStart = now - Date.parse(meeting.startedAt ?? new Date(now).toISOString())
+    const lastEnd = meeting.transcript.reduce((m, s) => Math.max(m, s.end), 0)
+    // Continue the meeting's timeline, unless its date was edited, in which case pick up after the last line.
+    const timeBaseMs = sinceStart >= lastEnd && sinceStart - lastEnd < 12 * 3_600_000 ? sinceStart : lastEnd + (lastEnd ? 1000 : 0)
+    this.session = this.createSession(meetingId, meeting, timeBaseMs)
+    log(`recording started: meeting ${meetingId}`)
     this.set({
       status: 'recording',
       meetingId,
@@ -170,15 +190,78 @@ export class RecordingController extends EventEmitter {
       log(`recording stopped: ${Math.round(recordedMs / 1000)}s recorded, final transcription took ${Date.now() - stopping} ms, ${session.echoRegionsDropped} echo regions dropped`)
       this.session = null
       this.set({ status: 'idle', meetingId: null, sessionStartedAt: null, pendingSeconds: 0 })
-      // A local AI model is about to write the notes on the same GPU: give it Whisper's memory now.
-      if (providerPreset(this.settings.get().ai.provider).local) void this.whisper.stopServer()
-      else this.whisper.scheduleIdleStop(3 * 60_000)
+      this.releaseEngine()
       this.emit('finished', meetingId)
     }
   }
 
+  /** A local AI model is about to write the notes on the same GPU: give it Whisper's memory now. */
+  private releaseEngine() {
+    if (providerPreset(this.settings.get().ai.provider).local) void this.whisper.stopServer()
+    else this.whisper.scheduleIdleStop(3 * 60_000)
+  }
+
+  /** Meeting whose uploaded recording is being transcribed, if any. */
+  get transcribingFile(): string | null {
+    return this.fileJob?.meetingId ?? null
+  }
+
+  /** Throws if an uploaded recording can't be transcribed right now. */
+  checkFileReady(): void {
+    if (this.state.status !== 'idle') throw new Error('Stop the current recording before transcribing a file.')
+    if (this.fileJob) throw new Error('Another recording is still being transcribed. Wait for it to finish.')
+    this.assertEngine()
+  }
+
+  /** Starts transcribing an uploaded recording into `meetingId`; audio arrives through pushFile(). */
+  async startFile(meetingId: string, durationMs: number): Promise<void> {
+    this.checkFileReady()
+    const meeting = await this.meetings.get(meetingId)
+    if (!meeting) throw new Error('Meeting not found')
+    const t = this.settings.get().transcription
+    const progress = (endMs: number) => this.emit('fileProgress', { meetingId, progress: Math.min(0.99, endMs / Math.max(1, durationMs)) })
+    this.fileJob = { meetingId, session: this.createSession(meetingId, meeting, 0, progress) }
+    this.whisper.cancelIdleStop()
+    this.whisper.ensureServer({ model: t.model, useGpu: t.useGpu, gpuDevice: t.gpuDevice }).catch((err: Error) => this.emit('error', err.message))
+    log(`file transcription started: ${Math.round(durationMs / 1000)} s of audio`)
+  }
+
+  /** Feeds uploaded audio (16 kHz mono) into the file session. */
+  pushFile(meetingId: string, pcm: Int16Array): void {
+    if (this.fileJob?.meetingId !== meetingId) throw new Error('This recording is no longer being transcribed.')
+    this.fileJob.session.push(new Int16Array(pcm.length), pcm)
+  }
+
+  /** All audio was pushed: transcribes what is left, then reports completion. */
+  async finishFile(meetingId: string): Promise<void> {
+    const job = this.fileJob
+    if (job?.meetingId !== meetingId) return
+    const started = Date.now()
+    try {
+      await job.session.stop()
+      log(`file transcription finished ${Math.round((Date.now() - started) / 1000)} s after the last audio arrived`)
+      this.emit('fileProgress', { meetingId, progress: 1, done: true })
+    } catch (err) {
+      this.emit('fileProgress', { meetingId, progress: 0, done: true, error: (err as Error).message })
+    } finally {
+      if (this.fileJob === job) this.fileJob = null
+      this.releaseEngine()
+    }
+  }
+
+  cancelFile(meetingId: string): void {
+    const job = this.fileJob
+    if (job?.meetingId !== meetingId) return
+    job.session.cancel()
+    this.fileJob = null
+    this.emit('fileProgress', { meetingId, progress: 0, done: true, error: 'Stopped' })
+    this.releaseEngine()
+  }
+
   /** Abandons the current recording immediately (used on quit). */
   async abort(): Promise<void> {
+    this.fileJob?.session.cancel()
+    this.fileJob = null
     const { meetingId } = this.state
     if (this.session && meetingId) {
       await this.meetings.addDuration(meetingId, (this.session.sampleCount / SAMPLE_RATE) * 1000)

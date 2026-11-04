@@ -52,6 +52,7 @@ End-to-end (Playwright driving the built app; screenshots go to `%TEMP%\nitroscr
 
 - `src/main/transcription/`: per-channel VAD, echo gate, packing into ≤28 s Whisper windows, word→speaker mapping, hallucination filters
 - `src/main/speakers/`: CAM++ voice embeddings (sherpa-onnx, in a worker thread), online clustering + end-of-meeting refinement, voice library
+- Uploaded recordings: the renderer decodes them with `OfflineAudioContext.decodeAudioData` at 16 kHz (`lib/audio.ts`, so any codec Chromium knows works) and streams 30 s PCM chunks to `RecordingController.startFile/pushFile/finishFile`. That runs a normal `TranscriptionSession` with all audio on the "them" channel (so voices get separated), and progress arrives as `import:audioProgress`. Only one recording or file job runs at a time. e2e: `node scripts/e2e.mjs audio` (needs ffmpeg on PATH).
 - `src/main/import/`: transcript import. Covers VTT, SRT, the Teams `.docx` format (minimal ZIP reader), Otter/Meet/"Name: text" plain text, and NitroScribe and other JSON exports. Missing timestamps are estimated.
 - `src/main/whisper/`: download/verify/extract whisper.cpp and models; manage `whisper-server`
 - `src/main/ai/`: LLM providers (OpenAI-compatible, Anthropic, Ollama native), prompts, retrieval for cross-meeting chat

@@ -1,10 +1,10 @@
 import clsx from 'clsx'
 import { CalendarDays, ChevronRight, Clock, Copy, Download, FileText, MoreHorizontal, Sparkles, Trash2, Upload, Video } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDuration, meetingDate, meetingFileBase, remoteSpeakers } from '@shared/format'
 import { findTemplate } from '@shared/templates'
 import type { Meeting, MeetingPatch } from '@shared/types'
-import { dayLabel } from '../lib/dates'
+import { dayLabel, toLocalInput } from '../lib/dates'
 import { htmlToMarkdown, markdownToHtml } from '../lib/markdown'
 import { useApp } from '../lib/store'
 import { BottomBar } from './BottomBar'
@@ -12,7 +12,7 @@ import { ChatPanel } from './ChatPanel'
 import { NotesEditor } from './NotesEditor'
 import { TopBar } from './TopBar'
 import { TranscriptPanel, downloadTranscript } from './TranscriptPanel'
-import { Avatar, Dropdown, IconButton, MenuItem, Time, speakerColor } from './ui'
+import { Avatar, Button, Dropdown, IconButton, MenuItem, Time, speakerColor } from './ui'
 
 /** Debounces calls; a pending call is flushed (not dropped) when the component unmounts. */
 function useDebounced<T extends unknown[]>(fn: (...args: T) => void, ms: number) {
@@ -50,18 +50,67 @@ function saveFor(id: string, patch: MeetingPatch) {
 
 const chip = 'inline-flex h-7 items-center gap-1.5 rounded-full border border-edge px-2.5 text-[12px] text-muted'
 
+/** The meeting's date; click to change it (not while it is being recorded or transcribed). */
+function DateChip({ meeting }: { meeting: Meeting }) {
+  const recording = useApp((s) => s.recording)
+  const transcribing = useApp((s) => !!s.audioJobs[meeting.id])
+  const patchCurrent = useApp((s) => s.patchCurrent)
+  const date = meetingDate(meeting)
+  const label = (
+    <>
+      <CalendarDays className="size-3.5" />
+      {dayLabel(date)} · <Time date={date} />
+    </>
+  )
+  if ((recording.meetingId === meeting.id && recording.status !== 'idle') || transcribing) return <span className={chip}>{label}</span>
+  return (
+    <Dropdown
+      className="!p-0"
+      trigger={({ toggle }) => (
+        <button className={clsx(chip, 'hover:bg-hover hover:text-ink')} onClick={toggle} title="Change the date">
+          {label}
+        </button>
+      )}
+    >
+      {(close) => <DateEditor initial={date} onSave={(iso) => (patchCurrent({ startedAt: iso }), close())} onCancel={close} />}
+    </Dropdown>
+  )
+}
+
+function DateEditor({ initial, onSave, onCancel }: { initial: Date; onSave: (iso: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(toLocalInput(initial))
+  const valid = !Number.isNaN(new Date(value).getTime())
+  return (
+    <div className="w-64 p-2.5">
+      <div className="px-0.5 pb-1.5 text-[11.5px] font-medium text-faint">Date and time of the meeting</div>
+      <input
+        type="datetime-local"
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && valid && onSave(new Date(value).toISOString())}
+        className="h-8 w-full rounded-lg border border-edge bg-app px-2.5 text-[13px] outline-none focus:border-accent/60"
+      />
+      <div className="mt-2.5 flex justify-end gap-1.5">
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button size="sm" variant="solid" disabled={!valid} onClick={() => onSave(new Date(value).toISOString())}>
+          Save
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function MetaChips({ meeting }: { meeting: Meeting }) {
   const userName = useApp((s) => s.view?.settings.userName ?? '')
   const setPanel = useApp((s) => s.setPanel)
-  const date = meetingDate(meeting)
   const people = remoteSpeakers(meeting, userName)
   const extraAttendees = meeting.attendees.filter((a) => !people.some((p) => p.name === a))
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className={chip}>
-        <CalendarDays className="size-3.5" />
-        {dayLabel(date)} · <Time date={date} />
-      </span>
+      <DateChip meeting={meeting} />
       {meeting.durationMs > 0 && (
         <span className={chip}>
           <Clock className="size-3.5" />

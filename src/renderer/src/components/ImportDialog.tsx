@@ -1,36 +1,23 @@
 import clsx from 'clsx'
-import { ArrowLeft, FileText, Sparkles, Upload } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, FileAudio, FileText, Sparkles, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatClock, formatDuration } from '@shared/format'
 import { allTemplates } from '@shared/templates'
 import type { ImportPreview } from '@shared/types'
-import { aiReady, useApp } from '../lib/store'
+import { toLocalInput } from '../lib/dates'
+import { aiReady, useApp, type AudioPreview } from '../lib/store'
 import { Avatar, Button, CloseButton, Field, Modal, Select, TextArea, TextInput, speakerColor } from './ui'
 
 const cleanError = (err: unknown) => (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
-/** "YYYY-MM-DDTHH:mm" in local time, for <input type="datetime-local">. */
-function toLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+const ACCEPT = '.txt,.vtt,.srt,.docx,.md,.json,.text,.mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac,.webm,.weba,.mp4,.m4v,.mov,.mkv,.3gp,.amr,.wma'
 
 function ChooseStep() {
   const { importDroppedFile, openImport, toast } = useApp.getState()
+  const decoding = useApp((s) => s.decoding)
   const [text, setText] = useState('')
-  const [busy, setBusy] = useState(false)
   const [over, setOver] = useState(false)
-  const pick = async () => {
-    setBusy(true)
-    try {
-      const preview = await window.api.imports.pick()
-      if (preview) openImport(preview)
-    } catch (err) {
-      toast('error', cleanError(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const input = useRef<HTMLInputElement>(null)
   const paste = async () => {
     try {
       openImport(await window.api.imports.parse(text, ''))
@@ -56,11 +43,23 @@ function ChooseStep() {
         className={clsx('flex flex-col items-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors', over ? 'border-accent bg-accent-soft' : 'border-edge')}
       >
         <Upload className="size-6 text-muted" />
-        <div className="mt-3 text-[14px] font-medium">Drop a transcript file here</div>
-        <div className="mt-1 max-w-[420px] text-[12.5px] leading-relaxed text-muted">
-          Zoom, Teams or Google Meet transcripts (.vtt, .docx, .txt), subtitles (.srt), Otter exports, Markdown, or a NitroScribe export (.json)
+        <div className="mt-3 text-[14px] font-medium">{decoding ? 'Reading the recording…' : 'Drop a recording or a transcript here'}</div>
+        <div className="mt-1 max-w-[440px] text-[12.5px] leading-relaxed text-muted">
+          Recordings (.mp3, .m4a, .wav, .ogg, .flac, or a video) are transcribed on this computer. Transcripts can be Zoom, Teams or Meet files
+          (.vtt, .docx, .txt), subtitles (.srt), Markdown, or a NitroScribe export.
         </div>
-        <Button className="mt-4" onClick={() => void pick()} loading={busy}>
+        <input
+          ref={input}
+          type="file"
+          accept={ACCEPT}
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void importDroppedFile(file)
+          }}
+        />
+        <Button className="mt-4" onClick={() => input.current?.click()} loading={decoding}>
           Choose file…
         </Button>
       </div>
@@ -194,16 +193,86 @@ function ReviewStep({ preview }: { preview: ImportPreview }) {
   )
 }
 
+/** Review a decoded recording before it is transcribed locally. */
+function AudioReviewStep({ preview }: { preview: AudioPreview }) {
+  const view = useApp((s) => s.view!)
+  const recording = useApp((s) => s.recording)
+  const busyJob = useApp((s) => Object.keys(s.audioJobs).length > 0)
+  const { openImport, startAudioImport, toast } = useApp.getState()
+  const ready = aiReady(view)
+  const [title, setTitle] = useState(preview.title)
+  const [when, setWhen] = useState(toLocalInput(preview.date ? new Date(preview.date) : new Date()))
+  const [templateId, setTemplateId] = useState('summary')
+  const [summarize, setSummarize] = useState(ready)
+  const [busy, setBusy] = useState(false)
+  const blocked = recording.status !== 'idle' ? 'Stop the current recording first.' : busyJob ? 'Another recording is still being transcribed.' : ''
+  const submit = async () => {
+    setBusy(true)
+    try {
+      await startAudioImport(preview, { title: title.trim(), startedAt: new Date(when).toISOString(), summarize, templateId })
+    } catch (err) {
+      toast('error', cleanError(err))
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 rounded-xl bg-hover px-3.5 py-3">
+        <FileAudio className="size-4 flex-none text-muted" />
+        <div className="min-w-0 flex-1 text-[12.5px]">
+          <div className="truncate font-medium text-ink">{preview.fileName}</div>
+          <div className="text-muted">Recording · {formatDuration(preview.durationMs)} · transcribed and split by speaker on this computer</div>
+        </div>
+      </div>
+      <Field label="Title" hint={!title.trim() && ready ? 'Leave empty to let the AI name it.' : undefined}>
+        <TextInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Untitled meeting" />
+      </Field>
+      <Field label="When was it recorded?" hint={preview.date ? 'Guessed from the file. Change it if needed.' : undefined}>
+        <TextInput type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+      </Field>
+      <div className="flex items-center gap-3 rounded-xl border border-edge px-3.5 py-3">
+        <input id="summarize-audio" type="checkbox" checked={summarize} disabled={!ready} onChange={(e) => setSummarize(e.target.checked)} className="accent-[var(--accent)]" />
+        <label htmlFor="summarize-audio" className={clsx('min-w-0 flex-1 text-[13px]', !ready && 'text-muted')}>
+          <span className="flex items-center gap-1.5 font-medium">
+            <Sparkles className="size-3.5 text-accent" /> Write AI notes and a summary when it's done
+          </span>
+          <span className="text-[12px] text-muted">{ready ? 'Uses your AI model after transcription.' : 'Connect an AI model in Settings to do this.'}</span>
+        </label>
+        <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={!summarize} className="!w-44">
+          {allTemplates(view.settings.customTemplates).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="text-[12px] leading-relaxed text-muted">
+        Long recordings take a while (roughly a third of their length on a good GPU). You can keep using NitroScribe while it works.
+      </div>
+      <div className="flex items-center justify-between pt-1">
+        <Button variant="ghost" onClick={() => openImport()}>
+          <ArrowLeft className="size-3.5" /> Back
+        </Button>
+        <Button variant="primary" loading={busy} disabled={!when || !!blocked} title={blocked || undefined} onClick={() => void submit()}>
+          Transcribe
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function ImportDialog() {
   const importing = useApp((s) => s.importing)
   const closeImport = useApp((s) => s.closeImport)
   return (
     <Modal open={!!importing} onClose={closeImport} className="flex max-h-[92vh] w-[min(640px,94vw)] flex-col">
       <div className="flex flex-none items-center justify-between px-6 pb-2 pt-5">
-        <h2 className="serif text-[24px]">Import a transcript</h2>
+        <h2 className="serif text-[24px]">{importing && importing !== 'choose' && 'pcm' in importing ? 'Transcribe a recording' : 'Import'}</h2>
         <CloseButton onClick={closeImport} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-2">{importing === 'choose' ? <ChooseStep /> : importing && <ReviewStep preview={importing} />}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-2">
+        {importing === 'choose' ? <ChooseStep /> : importing && ('pcm' in importing ? <AudioReviewStep preview={importing} /> : <ReviewStep preview={importing} />)}
+      </div>
     </Modal>
   )
 }

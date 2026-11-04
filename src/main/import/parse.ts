@@ -259,7 +259,7 @@ export function findDate(text: string): string | undefined {
   return undefined
 }
 
-function fileTitle(fileName: string): string {
+export function fileTitle(fileName: string): string {
   const base = fileName
     .replace(/\.[a-z0-9]{1,5}$/i, '')
     .replace(/GMT\d{8}-\d{6}_?/g, '')

@@ -5,6 +5,8 @@ import type {
   ChatRequest,
   EnhanceRequest,
   LlmProviderId,
+  AudioImportProgress,
+  AudioImportRequest,
   ImportPreview,
   ImportRequest,
   Meeting,
@@ -75,6 +77,14 @@ export interface NitroScribeApi {
     /** Parses dropped file bytes or pasted text. */
     parse(data: Uint8Array | string, fileName: string): Promise<ImportPreview>
     create(req: ImportRequest): Promise<Meeting>
+    /** Title and date suggested by a file name. */
+    describe(fileName: string): Promise<{ title: string; date?: string }>
+    /** Creates the meeting and starts transcribing; then push 16 kHz mono PCM and call audioFinish. */
+    audioStart(req: AudioImportRequest): Promise<Meeting>
+    audioPush(meetingId: string, pcm: Int16Array): Promise<void>
+    audioFinish(meetingId: string): Promise<void>
+    audioCancel(meetingId: string): Promise<void>
+    onAudioProgress(cb: (e: AudioImportProgress) => void): Unsubscribe
   }
   speakers: {
     rename(meetingId: string, speakerId: string, name: string, remember: boolean): Promise<Record<string, MeetingSpeaker>>

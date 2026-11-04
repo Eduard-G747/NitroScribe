@@ -52,3 +52,9 @@ export function greeting(now = new Date()): string {
   const h = now.getHours()
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
 }
+
+/** "YYYY-MM-DDTHH:mm" in local time, for <input type="datetime-local">. */
+export function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}

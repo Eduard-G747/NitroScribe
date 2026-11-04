@@ -2,6 +2,7 @@
 // fixtures, local Whisper (from the benchmark folder) and an Ollama model. Screenshots go to SHOTS_DIR.
 //   node scripts/e2e.mjs [full|onboarding|install|ui]
 import { _electron as electron } from 'playwright'
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -424,7 +425,65 @@ async function importing() {
   await app.close()
 }
 
-const run = { full, onboarding, install, ui, packaged, import: importing }[scenario]
+/** Uploading a recording (.m4a of three LibriSpeech voices) to be transcribed, then changing the meeting's date. */
+async function audio() {
+  const libri = join(root, 'test', 'fixtures', 'libri')
+  const index = JSON.parse(readFileSync(join(libri, 'index.json'), 'utf8'))
+  const people = [...new Set(index.map((c) => c.speaker))].slice(0, 3)
+  const clips = [0, 1, 2, 0, 1, 2].map((p, i) => index.filter((c) => c.speaker === people[p])[Math.floor(i / 3)])
+  const pcm = Buffer.concat(clips.flatMap((c) => [readFileSync(join(libri, c.file)).subarray(44), Buffer.alloc(16000 * 2 * 0.7)]))
+  const wav = join(tmpdir(), 'nitroscribe-e2e-call.wav')
+  const h = Buffer.alloc(44)
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVEfmt ', 8); h.writeUInt32LE(16, 16)
+  h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(16000, 24); h.writeUInt32LE(32000, 28)
+  h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(pcm.length, 40)
+  writeFileSync(wav, Buffer.concat([h, pcm]))
+  const m4a = join(tmpdir(), 'nitroscribe-e2e-call.m4a')
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wav, '-ar', '44100', '-ac', '2', '-c:a', 'aac', '-b:a', '96k', m4a])
+  log(`recording: ${(pcm.length / 32000).toFixed(1)} s, ${clips.length} turns from ${people.length} people`)
+
+  const { app, win } = await launch(dataDir({ onboarded: true, linkWhisper: true }))
+  await win.waitForSelector('text=Coming up')
+  await win.evaluate(
+    ({ b64, name }) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+      const dt = new DataTransfer()
+      dt.items.add(new File([bytes], name, { type: 'audio/mp4' }))
+      const root = document.querySelector('#root > div')
+      root.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true }))
+      root.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    },
+    { b64: readFileSync(m4a).toString('base64'), name: 'Client call 2025-06-12.m4a' }
+  )
+  await win.waitForSelector('text=Transcribe a recording', { timeout: 60_000 })
+  log('review:', (await win.locator('[role=dialog] .rounded-xl.bg-hover').innerText()).replace(/\n/g, ' | '), '| date:', await win.inputValue('[role=dialog] input[type="datetime-local"]'))
+  await win.click('#summarize-audio')
+  await shot(win, 'audio-1-review')
+  const t0 = Date.now()
+  await win.click('[role=dialog] button:has-text("Transcribe")')
+  await win.waitForSelector('text=/Transcribing \\d+%/', { timeout: 30_000 })
+  await win.waitForSelector('text=Recording transcribed', { timeout: 600_000 })
+  log(`transcribed in ${Math.round((Date.now() - t0) / 1000)} s`)
+  await shot(win, 'audio-2-transcript')
+  const panel = await win.locator('aside.border-l').innerText()
+  const speakers = [...new Set(panel.match(/Speaker \d/g) ?? [])]
+  log(`speakers: ${speakers.join(', ')} | transcript starts: ${panel.split('\n').slice(3, 9).join(' / ').slice(0, 300)}`)
+
+  // Change the meeting's date and check that the home list follows.
+  await win.click('button[title="Change the date"]')
+  await win.fill('input[type="datetime-local"]', '2024-03-05T09:30')
+  await win.click('button:has-text("Save")')
+  await win.waitForSelector('button[title="Change the date"]:has-text("2024")')
+  await shot(win, 'audio-3-date')
+  await sleep(1200)
+  await win.click('nav >> text=Home')
+  await win.waitForSelector('text=/Mar 5, 2024/')
+  log('home groups:', (await win.locator('main, .overflow-y-auto').first().innerText()).match(/\w{3}, \w{3} \d+, \d{4}/g)?.join(', '))
+  await app.close()
+  if (speakers.length < 2) throw new Error('expected the voices to be separated')
+}
+
+const run = { full, onboarding, install, ui, packaged, import: importing, audio }[scenario]
 run()
   .then(() => log('done'))
   .catch(async (err) => {

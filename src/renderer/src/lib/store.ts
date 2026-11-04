@@ -18,7 +18,18 @@ import type {
   ThemePreference,
   WhisperStatus
 } from '@shared/types'
+import { MEDIA_FILE, decodeRecording } from './audio'
 import { enhancedToEditorHtml } from './markdown'
+
+/** A decoded recording waiting for the user to confirm its details. */
+export interface AudioPreview {
+  kind: 'audio'
+  fileName: string
+  durationMs: number
+  pcm: Int16Array
+  title: string
+  date?: string
+}
 import { Recorder, type Levels } from './recorder'
 
 const api = window.api
@@ -63,8 +74,14 @@ interface Store {
   searchOpen: boolean
   sidebarCollapsed: boolean
   identifying: boolean
-  /** Import dialog: closed, picking a file, or reviewing a parsed transcript. */
-  importing: null | 'choose' | ImportPreview
+  /** Import dialog: closed, picking a file, or reviewing a parsed transcript / decoded recording. */
+  importing: null | 'choose' | ImportPreview | AudioPreview
+  /** Decoding a dropped recording. */
+  decoding: boolean
+  /** Uploaded recordings being transcribed, by meeting id. */
+  audioJobs: Record<string, { progress: number; summarize: boolean; templateId: string }>
+  startAudioImport(preview: AudioPreview, opts: { title: string; startedAt: string; summarize: boolean; templateId: string }): Promise<void>
+  cancelAudioImport(meetingId: string): void
 
   boot(): Promise<void>
   openImport(preview?: ImportPreview): void
@@ -223,17 +240,51 @@ export const useApp = create<Store>((set, get) => {
     sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === '1',
     identifying: false,
     importing: null,
+    decoding: false,
+    audioJobs: {},
 
     openImport: (preview) => set({ importing: preview ?? 'choose', searchOpen: false }),
     closeImport: () => set({ importing: null }),
 
     async importDroppedFile(file) {
       try {
-        const preview = await api.imports.parse(new Uint8Array(await file.arrayBuffer()), file.name)
-        set({ importing: preview })
+        if (MEDIA_FILE.test(file.name)) {
+          set({ decoding: true, importing: get().importing ?? 'choose' })
+          const { pcm, durationMs } = await decodeRecording(file)
+          const described = await api.imports.describe(file.name)
+          // Without a date in the name, the file's modified time is roughly when the recording ended.
+          const date = described.date ?? new Date((file.lastModified || Date.now()) - durationMs).toISOString()
+          set({ importing: { kind: 'audio', fileName: file.name, durationMs, pcm, title: described.title, date } })
+        } else {
+          set({ importing: await api.imports.parse(new Uint8Array(await file.arrayBuffer()), file.name) })
+        }
+      } catch (err) {
+        get().toast('error', (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+      } finally {
+        set({ decoding: false })
+      }
+    },
+
+    async startAudioImport(preview, { title, startedAt, summarize, templateId }) {
+      const meeting = await api.imports.audioStart({ title, startedAt, fileName: preview.fileName, durationMs: preview.durationMs })
+      set((s) => ({ importing: null, audioJobs: { ...s.audioJobs, [meeting.id]: { progress: 0, summarize, templateId } } }))
+      await get().openMeeting(meeting.id)
+      get().setPanel('transcript')
+      // 30 s per message; slice() copies, so only that part of the buffer crosses to the main process.
+      const chunk = 16000 * 30
+      try {
+        for (let i = 0; i < preview.pcm.length; i += chunk) {
+          if (!get().audioJobs[meeting.id]) return
+          await api.imports.audioPush(meeting.id, preview.pcm.slice(i, i + chunk))
+        }
+        await api.imports.audioFinish(meeting.id)
       } catch (err) {
         get().toast('error', (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
       }
+    },
+
+    cancelAudioImport(meetingId) {
+      void api.imports.audioCancel(meetingId)
     },
 
     async finishImport(req, { summarize, templateId }) {
@@ -321,6 +372,24 @@ export const useApp = create<Store>((set, get) => {
         if (get().current?.id === id) void get().goHome()
       })
       api.recording.onState((recording) => set({ recording }))
+      api.imports.onAudioProgress((e) => {
+        const job = get().audioJobs[e.meetingId]
+        if (!job) return
+        if (!e.done) {
+          set((s) => ({ audioJobs: { ...s.audioJobs, [e.meetingId]: { ...job, progress: e.progress } } }))
+          return
+        }
+        set((s) => {
+          const { [e.meetingId]: _done, ...rest } = s.audioJobs
+          return { audioJobs: rest }
+        })
+        if (e.error) {
+          if (e.error !== 'Stopped') get().toast('error', `Transcription failed: ${e.error}`)
+          return
+        }
+        get().toast('success', 'Recording transcribed')
+        if (job.summarize && aiReady(get().view)) void get().enhance({ meetingId: e.meetingId, templateId: job.templateId })
+      })
       api.recording.onSegments((e) =>
         set((s) => {
           if (s.current?.id !== e.meetingId) return {}

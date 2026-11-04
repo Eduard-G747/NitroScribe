@@ -280,9 +280,10 @@ export class WhisperManager extends EventEmitter {
     // No --vad: whisper.cpp's Silero VAD gets slower with every request in this build (seconds → minutes),
     // and we already send only speech regions (see transcription/windows.ts).
     args.push('-l', 'auto', '-nlp', '-sns')
-    if (config.useGpu && this.status.binary === 'cuda') args.push('-dev', String(config.gpuDevice))
-    if (!config.useGpu && this.status.binary === 'metal') args.push('-ng')
-    else args.push('-ng')
+    // CUDA (Windows) picks the GPU with -dev; Metal (Mac) uses the GPU by default; otherwise run on the CPU.
+    const gpu = config.useGpu && (this.status.binary === 'cuda' || this.status.binary === 'metal')
+    if (!gpu) args.push('-ng')
+    else if (this.status.binary === 'cuda') args.push('-dev', String(config.gpuDevice))
     // A stale CUDA_VISIBLE_DEVICES (e.g. "1" on a single-GPU laptop) hides the GPU entirely; we select the device with -dev instead.
     const env = { ...process.env }
     delete env.CUDA_VISIBLE_DEVICES

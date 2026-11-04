@@ -43,7 +43,13 @@ const api: NitroScribeApi = {
   imports: {
     pick: () => invoke('import:pick'),
     parse: (data, fileName) => invoke('import:parse', data, fileName),
-    create: (req) => invoke('import:create', req)
+    create: (req) => invoke('import:create', req),
+    describe: (fileName) => invoke('import:describe', fileName),
+    audioStart: (req) => invoke('import:audioStart', req),
+    audioPush: (meetingId, pcm) => invoke('import:audioPush', meetingId, pcm),
+    audioFinish: (meetingId) => invoke('import:audioFinish', meetingId),
+    audioCancel: (meetingId) => invoke('import:audioCancel', meetingId),
+    onAudioProgress: on('import:audioProgress')
   },
   speakers: {
     rename: (meetingId, speakerId, name, remember) => invoke('speakers:rename', meetingId, speakerId, name, remember),

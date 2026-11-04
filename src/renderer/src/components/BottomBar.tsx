@@ -12,7 +12,8 @@ function RecordControl({ meeting }: { meeting: Meeting }) {
   const recording = useApp((s) => s.recording)
   const levels = useApp((s) => s.levels)
   const panel = useApp((s) => s.panel)
-  const { startRecording, stopRecording, setPanel, openMeeting, openSettings } = useApp.getState()
+  const job = useApp((s) => s.audioJobs[meeting.id])
+  const { startRecording, stopRecording, setPanel, openMeeting, openSettings, cancelAudioImport } = useApp.getState()
   const mine = recording.meetingId === meeting.id
   const live = mine && recording.status === 'recording'
   const now = useTicker(live, 250)
@@ -78,6 +79,23 @@ function RecordControl({ meeting }: { meeting: Meeting }) {
   const hasTranscript = meeting.transcript.length > 0
   // An imported transcript is a finished record of a past meeting, so there's nothing to resume.
   const imported = meeting.source?.kind === 'import'
+  if (job) {
+    return (
+      <div className="flex items-center gap-1">
+        <button onClick={toggleTranscript} className="flex h-9 items-center gap-2 rounded-xl px-3 text-[13px] text-muted hover:bg-hover" title="Show the transcript as it comes in">
+          <Loader2 className="size-4 animate-spin text-accent" />
+          <span className="font-medium text-ink">Transcribing {Math.round(job.progress * 100)}%</span>
+        </button>
+        <button
+          onClick={() => confirm('Stop transcribing this recording? What is done so far is kept.') && cancelAudioImport(meeting.id)}
+          title="Stop transcribing"
+          className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-hover hover:text-danger"
+        >
+          <Square className="size-3.5 fill-current" />
+        </button>
+      </div>
+    )
+  }
   return (
     <div className="flex items-center gap-1">
       {imported ? (

@@ -18,8 +18,20 @@ import { existsSync, promises as fs } from 'node:fs'
 import { basename, join, sep } from 'node:path'
 import { meetingFileBase, meetingDate, transcriptToText } from '@shared/format'
 import { hostOf } from '@shared/net'
-import type { AppCommand, CalendarEvent, ImportRequest, Meeting, MeetingPatch, MeetingSpeaker, SaveFileRequest, Settings } from '@shared/types'
+import type {
+  AppCommand,
+  AudioImportProgress,
+  AudioImportRequest,
+  CalendarEvent,
+  ImportRequest,
+  Meeting,
+  MeetingPatch,
+  MeetingSpeaker,
+  SaveFileRequest,
+  Settings
+} from '@shared/types'
 import { MAX_IMPORT_BYTES, meetingFromImport, previewFile, previewText } from './import'
+import { fileTitle, findDate } from './import/parse'
 import { AiService } from './ai/service'
 import { CalendarService, fetchIcs, parseIcs } from './calendar'
 import { RecordingController } from './recording'
@@ -279,6 +291,7 @@ async function main() {
   })
   recorder.on('error', (message: string) => send('app:toast', { kind: 'error', message }))
   recorder.on('notice', (message: string) => send('app:toast', { kind: 'info', message }))
+  recorder.on('fileProgress', (e: AudioImportProgress) => send('import:audioProgress', e))
   ai.on('stream', (e) => send('ai:stream', e))
   ai.on('speakersNamed', (meetingId: string, speakers: Record<string, MeetingSpeaker>) => {
     for (const s of Object.values(speakers)) if (s.nameSource === 'ai') recorder.nameSpeaker(meetingId, s.id, s.name, 'ai')
@@ -331,11 +344,32 @@ async function main() {
     log(`imported a transcript: ${m.transcript.length} lines, format ${m.source?.format}`)
     return m
   })
+  // Uploaded recordings: the window decodes the audio to 16 kHz PCM and streams it here in chunks.
+  handle('import:describe', (fileName: string) => ({ title: fileTitle(String(fileName)), date: findDate(String(fileName)) }))
+  handle('import:audioStart', async (req: AudioImportRequest) => {
+    const startedAt = new Date(String(req.startedAt))
+    if (Number.isNaN(startedAt.getTime())) throw new Error('Pick when the recording was made.')
+    recorder.checkFileReady()
+    const iso = startedAt.toISOString()
+    const m = await meetings.create({
+      title: String(req.title ?? '').slice(0, 300).trim(),
+      createdAt: iso,
+      startedAt: iso,
+      durationMs: Math.max(0, Math.round(Number(req.durationMs) || 0)),
+      source: { kind: 'import', fileName: String(req.fileName ?? '').slice(0, 260) || undefined, format: 'Audio recording', importedAt: new Date().toISOString() }
+    })
+    await recorder.startFile(m.id, m.durationMs)
+    return m
+  })
+  handle('import:audioPush', (meetingId: string, pcm: unknown) => recorder.pushFile(meetingId, toInt16(pcm)))
+  handle('import:audioFinish', (meetingId: string) => void recorder.finishFile(meetingId))
+  handle('import:audioCancel', (meetingId: string) => recorder.cancelFile(meetingId))
   handle('meetings:update', async (id: string, patch: MeetingPatch) => {
     await meetings.update(id, patch)
   })
   handle('meetings:remove', async (id: string) => {
     if (recorder.getState().meetingId === id) throw new Error('Stop the recording before deleting this meeting.')
+    recorder.cancelFile(id)
     await meetings.delete(id)
   })
   handle('meetings:search', (q: string) => meetings.search(q))
