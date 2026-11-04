@@ -729,9 +729,18 @@ function DataTab() {
               text={calendarHosts.length ? `Your iCal feeds are downloaded from ${calendarHosts.join(', ')}. Nothing is uploaded.` : 'No calendars connected.'}
             />
             <PrivacyRow ok icon={Download} title="Speech models" text="Downloaded once from GitHub and Hugging Face during setup, and verified against known SHA-256 fingerprints." />
-            <PrivacyRow ok icon={ShieldCheck} title="The app window" text="Blocked from connecting to the internet. No auto-updates, ads, analytics or crash reports." />
+            <PrivacyRow
+              ok
+              icon={RefreshCw}
+              title="Update reminders"
+              text={s.updates.check ? 'Once a day, asks GitHub whether a newer version is out. Nothing about you or your meetings is sent.' : 'Off.'}
+            />
+            <PrivacyRow ok icon={ShieldCheck} title="The app window" text="Blocked from connecting to the internet. No ads, analytics or crash reports." />
           </ul>
         </div>
+        <Field inline label="Tell me when a new version is out" hint="Shows a reminder with a download link. Nothing installs by itself.">
+          <Toggle checked={s.updates.check} onChange={(v) => void update({ updates: { check: v } })} />
+        </Field>
       </Section>
       <Section title="Your data" description="Each meeting is a JSON file in the data folder, so your history is unlimited and easy to back up.">
         <div className="flex items-center gap-3 py-3">

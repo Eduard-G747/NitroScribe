@@ -6,6 +6,10 @@
   "main": "./out/main/index.js",
   "author": "Eduard Georgescu",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Eduard-G747/nitroscribe.git"
+  },
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",

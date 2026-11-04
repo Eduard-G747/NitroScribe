@@ -245,6 +245,19 @@ export interface Settings {
     /** Meeting data may only be sent to AI servers on this PC or the local network. */
     localOnly: boolean
   }
+  updates: {
+    /** Ask GitHub once a day whether a new version is out. */
+    check: boolean
+    /** A version the user chose not to be reminded about. */
+    dismissed: string
+  }
+}
+
+export interface UpdateInfo {
+  version: string
+  /** Direct download for this platform (or the release page). */
+  url: string
+  page: string
 }
 
 export type ThemePreference = 'system' | 'light' | 'dark'

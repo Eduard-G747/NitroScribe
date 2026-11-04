@@ -28,10 +28,12 @@ import type {
   MeetingPatch,
   MeetingSpeaker,
   SaveFileRequest,
-  Settings
+  Settings,
+  UpdateInfo
 } from '@shared/types'
 import { MAX_IMPORT_BYTES, meetingFromImport, previewFile, previewText } from './import'
 import { fileTitle, findDate } from './import/parse'
+import { UpdateChecker } from './updates'
 import { AiService } from './ai/service'
 import { CalendarService, fetchIcs, parseIcs } from './calendar'
 import { RecordingController } from './recording'
@@ -291,6 +293,17 @@ async function main() {
   })
   recorder.on('error', (message: string) => send('app:toast', { kind: 'error', message }))
   recorder.on('notice', (message: string) => send('app:toast', { kind: 'info', message }))
+
+  // Update reminders: a daily look at the repo's latest GitHub release (no data about the user is sent).
+  const updates = new UpdateChecker(() => settings.get().updates.check)
+  updates.on('available', (info: UpdateInfo, isNew: boolean) => {
+    send('app:update', info)
+    if (!isNew || settings.get().updates.dismissed === info.version || !Notification.isSupported()) return
+    const n = new Notification({ title: `NitroScribe ${info.version} is available`, body: 'Click to download the update.', icon: resource('icon.png') })
+    n.on('click', () => void shell.openExternal(info.url))
+    n.show()
+  })
+  updates.start()
   recorder.on('fileProgress', (e: AudioImportProgress) => send('import:audioProgress', e))
   ai.on('stream', (e) => send('ai:stream', e))
   ai.on('speakersNamed', (meetingId: string, speakers: Record<string, MeetingSpeaker>) => {
@@ -460,6 +473,8 @@ async function main() {
   handle('files:copy', (text: string) => clipboard.writeText(text))
 
   handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, dataDir, logsDir }))
+  handle('app:updateInfo', () => updates.latest)
+  handle('app:openUpdate', () => updates.latest && shell.openExternal(updates.latest.url))
   handle('app:openExternal', async (url: string) => {
     if (/^https?:\/\//i.test(url)) await shell.openExternal(url)
   })
@@ -482,6 +497,7 @@ async function main() {
         whisper.dispose()
         recorder.dispose()
         calendar.stop()
+        updates.stop()
         tray.destroy()
         cleanedUp = true
         app.quit()

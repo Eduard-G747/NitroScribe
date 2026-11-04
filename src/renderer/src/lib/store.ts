@@ -16,6 +16,7 @@ import type {
   SettingsPatch,
   SettingsView,
   ThemePreference,
+  UpdateInfo,
   WhisperStatus
 } from '@shared/types'
 import { MEDIA_FILE, decodeRecording } from './audio'
@@ -80,6 +81,8 @@ interface Store {
   decoding: boolean
   /** Uploaded recordings being transcribed, by meeting id. */
   audioJobs: Record<string, { progress: number; summarize: boolean; templateId: string }>
+  /** A newer NitroScribe release, if one is out. */
+  update: UpdateInfo | null
   startAudioImport(preview: AudioPreview, opts: { title: string; startedAt: string; summarize: boolean; templateId: string }): Promise<void>
   cancelAudioImport(meetingId: string): void
 
@@ -242,6 +245,7 @@ export const useApp = create<Store>((set, get) => {
     importing: null,
     decoding: false,
     audioJobs: {},
+    update: null,
 
     openImport: (preview) => set({ importing: preview ?? 'choose', searchOpen: false }),
     closeImport: () => set({ importing: null }),
@@ -372,6 +376,8 @@ export const useApp = create<Store>((set, get) => {
         if (get().current?.id === id) void get().goHome()
       })
       api.recording.onState((recording) => set({ recording }))
+      void api.app.updateInfo().then((update) => update && set({ update }))
+      api.app.onUpdate((update) => set({ update }))
       api.imports.onAudioProgress((e) => {
         const job = get().audioJobs[e.meetingId]
         if (!job) return

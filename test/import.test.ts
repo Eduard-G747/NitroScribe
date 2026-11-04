@@ -184,7 +184,7 @@ describe('import files', () => {
   it('reads UTF-16 text files and rejects media files', () => {
     const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Ana: Olá a todos.\nBruno: Bom dia.', 'utf16le')])
     expect(previewFile(utf16, 'notes.txt').lines.map((l) => l.speaker)).toEqual(['Ana', 'Bruno'])
-    expect(() => previewFile(Buffer.from('x'), 'call.mp3')).toThrow(/audio or video/)
+    expect(() => previewFile(Buffer.from('x'), 'call.mp3')).toThrow(/recording/)
     expect(() => previewText('   ')).toThrow()
   })
 

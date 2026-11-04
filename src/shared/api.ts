@@ -7,6 +7,7 @@ import type {
   LlmProviderId,
   AudioImportProgress,
   AudioImportRequest,
+  UpdateInfo,
   ImportPreview,
   ImportRequest,
   Meeting,
@@ -127,6 +128,11 @@ export interface NitroScribeApi {
   app: {
     info(): Promise<AppInfo>
     openExternal(url: string): Promise<void>
+    /** A newer release on GitHub, if one was found. */
+    updateInfo(): Promise<UpdateInfo | null>
+    /** Opens the download for the newer release. */
+    openUpdate(): Promise<void>
+    onUpdate(cb: (info: UpdateInfo) => void): Unsubscribe
     openFolder(which: 'data' | 'logs'): Promise<void>
     onCommand(cb: (command: AppCommand) => void): Unsubscribe
     onToast(cb: (toast: Toast) => void): Unsubscribe

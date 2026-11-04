@@ -25,7 +25,8 @@ export function defaultSettings(): Settings {
     calendars: [],
     notifyMeetings: true,
     general: { launchAtLogin: false, closeToTray: true, onboarded: false, theme: 'system' },
-    privacy: { localOnly: true }
+    privacy: { localOnly: true },
+    updates: { check: true, dismissed: '' }
   }
 }
 
@@ -44,6 +45,7 @@ export function mergeSettings(base: Settings, stored: unknown): Settings {
     transcription: { ...base.transcription, ...s.transcription },
     general: { ...base.general, ...s.general },
     privacy: { ...base.privacy, ...s.privacy },
+    updates: { ...base.updates, ...s.updates },
     customTemplates: s.customTemplates ?? base.customTemplates,
     calendars: s.calendars ?? base.calendars
   }

@@ -16,8 +16,8 @@ function decodeText(buf: Buffer): string {
 
 /** Reads a transcript file of any supported format into a preview the user can review. */
 export function previewFile(buf: Buffer, fileName: string): ImportPreview {
+  if (MEDIA.test(fileName)) throw new Error('That is a recording, not a transcript. Drop it on the window or use Import to transcribe it.')
   if (buf.length > MAX_IMPORT_BYTES) throw new Error('This file is too big to be a transcript (25 MB max).')
-  if (MEDIA.test(fileName)) throw new Error('That is an audio or video file. Import its transcript instead (.vtt, .srt, .txt, .docx).')
   if (UNSUPPORTED.test(fileName)) throw new Error('This file type is not supported. Save the transcript as .txt or .docx and try again.')
   const isDocx = /\.docx$/i.test(fileName) || (buf[0] === 0x50 && buf[1] === 0x4b)
   const preview = parseTranscript(isDocx ? docxToText(buf) : decodeText(buf), fileName, isDocx ? 'Word document' : undefined)

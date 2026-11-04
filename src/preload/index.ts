@@ -92,6 +92,9 @@ const api: NitroScribeApi = {
   app: {
     info: () => invoke('app:info'),
     openExternal: (url) => invoke('app:openExternal', url),
+    updateInfo: () => invoke('app:updateInfo'),
+    openUpdate: () => invoke('app:openUpdate'),
+    onUpdate: on('app:update'),
     openFolder: (which) => invoke('app:openFolder', which),
     onCommand: on('app:command'),
     onToast: on('app:toast')

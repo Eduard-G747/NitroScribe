@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CalendarDays, ChevronsUpDown, Home, Lock, MessageCircle, Moon, PanelLeft, Search, Settings2, Sun, type LucideIcon } from 'lucide-react'
+import { CalendarDays, ChevronsUpDown, Download, Home, Lock, MessageCircle, Moon, PanelLeft, Search, Settings2, Sun, X, type LucideIcon } from 'lucide-react'
 import logo from '../assets/logo.png'
 import { useApp } from '../lib/store'
 import { Bars, IconButton } from './ui'
@@ -19,6 +19,35 @@ function NavItem({ icon: Icon, label, active, onClick, trailing }: { icon: Lucid
 
 export function isDark(): boolean {
   return document.documentElement.classList.contains('dark')
+}
+
+/** Shown when a newer release is on GitHub, until the user updates or dismisses that version. */
+function UpdateCard() {
+  const update = useApp((s) => s.update)
+  const dismissed = useApp((s) => s.view?.settings.updates.dismissed)
+  const updateSettings = useApp((s) => s.updateSettings)
+  if (!update || update.version === dismissed) return null
+  return (
+    <div className="mx-2.5 mb-2 rounded-xl bg-accent-soft px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <Download className="mt-0.5 size-3.5 flex-none text-accent" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[12.5px] font-medium">NitroScribe {update.version} is out</div>
+          <div className="mt-1.5 flex gap-3 text-[12px]">
+            <button className="no-drag font-medium text-accent hover:underline" onClick={() => void window.api.app.openUpdate()}>
+              Download
+            </button>
+            <button className="no-drag text-muted hover:text-ink" onClick={() => void window.api.app.openExternal(update.page)}>
+              What's new
+            </button>
+          </div>
+        </div>
+        <button className="no-drag text-faint hover:text-ink" title="Remind me next version" onClick={() => void updateSettings({ updates: { dismissed: update.version } })}>
+          <X className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function EngineCard() {
@@ -106,6 +135,7 @@ export function Sidebar() {
           <CalendarDays className="size-4" strokeWidth={1.75} />
         </IconButton>
       </div>
+      <UpdateCard />
       <EngineCard />
       <button onClick={() => openSettings('general')} className="no-drag flex items-center gap-2.5 border-t border-edge/60 px-3.5 py-3 text-left hover:bg-hover">
         <img src={logo} alt="" className="size-6" />
