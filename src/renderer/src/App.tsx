@@ -1,5 +1,6 @@
 import { Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { ActionsView } from './components/ActionsView'
 import { ChatPanel } from './components/ChatPanel'
 import { HomeView } from './components/HomeView'
 import { ImportDialog } from './components/ImportDialog'
@@ -83,7 +84,9 @@ export function App() {
       )}
       <Sidebar />
       <div className="flex min-w-0 flex-1">
-        <div className="min-w-0 flex-1">{route.name === 'meeting' ? <MeetingView /> : route.name === 'notes' ? <NotesView /> : <HomeView />}</div>
+        <div className="min-w-0 flex-1">
+          {route.name === 'meeting' ? <MeetingView /> : route.name === 'notes' ? <NotesView /> : route.name === 'actions' ? <ActionsView /> : <HomeView />}
+        </div>
         {globalChatOpen && (
           <aside className="flex w-[420px] flex-none flex-col border-l border-edge bg-app">
             <div className="drag h-11 flex-none" />

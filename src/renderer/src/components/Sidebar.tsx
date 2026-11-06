@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CalendarDays, ChevronsUpDown, Download, Home, Lock, MessageCircle, Moon, PanelLeft, Search, Settings2, Sun, X, type LucideIcon } from 'lucide-react'
+import { CalendarDays, ChevronsUpDown, Download, Home, ListChecks, Lock, MessageCircle, Moon, PanelLeft, Search, Settings2, Sun, X, type LucideIcon } from 'lucide-react'
 import logo from '../assets/logo.png'
 import { useApp } from '../lib/store'
 import { Bars, IconButton } from './ui'
@@ -80,7 +80,8 @@ export function Sidebar() {
   const collapsed = useApp((s) => s.sidebarCollapsed)
   const userName = useApp((s) => s.view?.settings.userName ?? '')
   const theme = useApp((s) => s.view?.settings.general.theme ?? 'system')
-  const { goHome, goNotes, openMeeting, openSettings, setGlobalChat, setSearchOpen, toggleSidebar, setTheme } = useApp.getState()
+  const { goHome, goNotes, goActions, openMeeting, openSettings, setGlobalChat, setSearchOpen, toggleSidebar, setTheme } = useApp.getState()
+  const openActions = meetings.reduce((n, m) => n + m.actionItems.filter((i) => i.mine && !i.done).length, 0)
   if (collapsed) return null
   const recordingMeeting = recording.status !== 'idle' ? meetings.find((m) => m.id === recording.meetingId) : undefined
   const dark = theme === 'dark' || (theme === 'system' && isDark())
@@ -99,6 +100,13 @@ export function Sidebar() {
       <nav className="space-y-px px-2 pt-1">
         <NavItem icon={Home} label="Home" active={route.name === 'home' && !globalChatOpen} onClick={() => void goHome()} />
         <NavItem icon={MessageCircle} label="Chat" active={globalChatOpen} onClick={() => setGlobalChat(!globalChatOpen)} />
+        <NavItem
+          icon={ListChecks}
+          label="Action items"
+          active={route.name === 'actions'}
+          onClick={() => void goActions()}
+          trailing={openActions > 0 && <span className="text-[11px] text-faint">{openActions}</span>}
+        />
       </nav>
 
       {recordingMeeting && (

@@ -482,6 +482,9 @@ export function AiTab() {
         <Field inline label="Generate AI notes automatically when a meeting ends">
           <Toggle checked={s.ai.autoEnhance} onChange={(v) => void update({ ai: { autoEnhance: v } })} />
         </Field>
+        <Field inline label="Find action items after writing notes" hint="Owners and deadlines go to the Action items page, ready for your calendar.">
+          <Toggle checked={s.ai.autoActionItems} onChange={(v) => void update({ ai: { autoActionItems: v } })} />
+        </Field>
         <Field label="Default template">
           <Select value={s.defaultTemplateId} onChange={(e) => void update({ defaultTemplateId: e.target.value })}>
             {allTemplates(s.customTemplates).map((t) => (

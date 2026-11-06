@@ -419,6 +419,7 @@ async function main() {
   handle('voices:remove', (id: string) => voices.remove(id))
 
   handle('ai:enhance', (req: Parameters<AiService['enhance']>[0]) => ai.enhance(req))
+  handle('ai:actionItems', (meetingId: string) => ai.extractActionItems(meetingId))
   handle('ai:chat', (req: Parameters<AiService['chat']>[0]) => ai.chat(req))
   handle('ai:cancel', (id: string) => ai.cancel(id))
   handle('ai:models', (provider: Parameters<AiService['models']>[0]) => ai.models(provider))

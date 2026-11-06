@@ -3,12 +3,25 @@ import { randomUUID } from 'node:crypto'
 import { isUntitled } from '@shared/format'
 import { hostOf, isLocalUrl } from '@shared/net'
 import { findTemplate } from '@shared/templates'
-import type { AiStreamEvent, ChatRequest, EnhanceRequest, LlmProviderId } from '@shared/types'
+import type { ActionItem, AiStreamEvent, ChatRequest, EnhanceRequest, LlmProviderId } from '@shared/types'
 import type { MeetingStore } from '../store/meetings'
 import type { SettingsStore } from '../store/settings'
 import { log } from '../util/log'
 import { listModels, streamChat, type LlmMessage } from './llm'
-import { cleanMarkdown, cleanTitle, enhancePrompt, globalChatSystem, meetingChatSystem, parseJsonObject, speakerIdPrompt, titlePrompt } from './prompts'
+import {
+  actionItemsPrompt,
+  cleanMarkdown,
+  cleanTitle,
+  enhancePrompt,
+  globalChatSystem,
+  meetingChatSystem,
+  noteActionBullets,
+  parseActionItems,
+  parseJsonObject,
+  refineActionItems,
+  speakerIdPrompt,
+  titlePrompt
+} from './prompts'
 import { buildMeetingRecords } from './retrieval'
 
 export class AiService extends EventEmitter {
@@ -124,9 +137,41 @@ export class AiService extends EventEmitter {
           enhancedAt: new Date().toISOString(),
           templateId: req.templateId
         })
-        void this.autoTitle(req.meetingId)
+        // One request at a time, so a local model isn't asked to do two things at once.
+        void this.autoTitle(req.meetingId).then(async () => {
+          if (this.settings.get().ai.autoActionItems) {
+            await this.extractActionItems(req.meetingId).catch((err: Error) => log(`action items skipped: ${err.message}`))
+          }
+        })
       }
     )
+  }
+
+  /**
+   * Finds the meeting's action items (owner, deadline, details). Items the user checked off or edited
+   * are kept as they are; the rest are replaced by the new extraction.
+   */
+  async extractActionItems(meetingId: string): Promise<ActionItem[]> {
+    const meeting = await this.meetings.get(meetingId)
+    if (!meeting) throw new Error('Meeting not found')
+    if (!meeting.transcript.length && !meeting.notesMarkdown.trim() && !meeting.enhancedMarkdown?.trim()) {
+      await this.meetings.update(meetingId, { actionItemsAt: new Date().toISOString() })
+      return meeting.actionItems ?? []
+    }
+    const settings = this.settings.get()
+    const { system, user } = actionItemsPrompt(meeting, settings)
+    const reply = await streamChat({ ...this.llm(), system, messages: [{ role: 'user', content: user }], signal: AbortSignal.timeout(300_000) })
+    const parsed = parseActionItems(reply)
+    if (!parsed && !noteActionBullets(meeting.enhancedMarkdown ?? '').length) throw new Error("The AI model's answer couldn't be read. Try again.")
+    const found = refineActionItems(parsed, meeting, settings.userName)
+    const fresh = (await this.meetings.get(meetingId)) ?? meeting
+    const kept = (fresh.actionItems ?? []).filter((i) => i.done || i.edited)
+    const key = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+    const seen = new Set(kept.map((i) => key(i.task)))
+    const items = [...kept, ...found.filter((i) => !seen.has(key(i.task))).map((i) => ({ ...i, id: randomUUID(), done: false }))]
+    await this.meetings.update(meetingId, { actionItems: items, actionItemsAt: new Date().toISOString() })
+    log(`action items: ${found.length} found, ${kept.length} kept`)
+    return items
   }
 
   private async autoTitle(meetingId: string) {

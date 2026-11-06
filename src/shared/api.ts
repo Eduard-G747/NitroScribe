@@ -5,6 +5,7 @@ import type {
   ChatRequest,
   EnhanceRequest,
   LlmProviderId,
+  ActionItem,
   AudioImportProgress,
   AudioImportRequest,
   UpdateInfo,
@@ -95,6 +96,8 @@ export interface NitroScribeApi {
   }
   ai: {
     enhance(req: EnhanceRequest): Promise<string>
+    /** Extracts (or refreshes) a meeting's action items. */
+    actionItems(meetingId: string): Promise<ActionItem[]>
     chat(req: ChatRequest): Promise<string>
     cancel(requestId: string): Promise<void>
     models(provider: LlmProviderId): Promise<string[]>

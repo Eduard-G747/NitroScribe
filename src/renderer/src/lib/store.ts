@@ -3,6 +3,7 @@ import type { AppInfo, CalendarSnapshot } from '@shared/api'
 import { isLocalUrl } from '@shared/net'
 import { providerPreset } from '@shared/providers'
 import type {
+  ActionItem,
   AiStreamEvent,
   AppCommand,
   CalendarEvent,
@@ -35,7 +36,7 @@ import { Recorder, type Levels } from './recorder'
 
 const api = window.api
 
-export type Route = { name: 'home' } | { name: 'notes' } | { name: 'meeting'; id: string }
+export type Route = { name: 'home' } | { name: 'notes' } | { name: 'actions' } | { name: 'meeting'; id: string }
 export type SettingsTab = 'general' | 'transcription' | 'ai' | 'templates' | 'calendar' | 'data'
 export type Panel = 'transcript' | 'chat' | null
 
@@ -92,6 +93,12 @@ interface Store {
   importDroppedFile(file: File): Promise<void>
   finishImport(req: ImportRequest, opts: { summarize: boolean; templateId: string }): Promise<void>
   goNotes(): Promise<void>
+  goActions(): Promise<void>
+  /** Progress while action items are extracted from several meetings. */
+  scanning: { done: number; total: number } | null
+  findActionItems(meetingIds: string[]): Promise<void>
+  /** Edits an action item (null deletes it). */
+  updateActionItem(meetingId: string, itemId: string, patch: Partial<ActionItem> | null): void
   setSearchOpen(open: boolean): void
   toggleSidebar(): void
   setTheme(theme: ThemePreference): void
@@ -302,6 +309,46 @@ export const useApp = create<Store>((set, get) => {
     async goNotes() {
       await get().flushPending()
       set({ route: { name: 'notes' }, current: null, panel: null })
+    },
+
+    async goActions() {
+      await get().flushPending()
+      set({ route: { name: 'actions' }, current: null, panel: null, globalChatOpen: false })
+    },
+
+    scanning: null,
+
+    async findActionItems(meetingIds) {
+      if (get().scanning || !meetingIds.length) return
+      if (!aiReady(get().view)) {
+        get().toast('info', 'Connect an AI model first to find action items.')
+        get().openSettings('ai')
+        return
+      }
+      set({ scanning: { done: 0, total: meetingIds.length } })
+      let found = 0
+      for (const id of meetingIds) {
+        try {
+          found += (await api.ai.actionItems(id)).filter((i) => !i.done).length
+        } catch (err) {
+          get().toast('error', (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+          break
+        } finally {
+          set((s) => ({ scanning: s.scanning && { ...s.scanning, done: s.scanning.done + 1 } }))
+        }
+      }
+      set({ scanning: null })
+      get().toast('success', found ? `Found ${found} open action item${found === 1 ? '' : 's'}` : 'No action items found')
+    },
+
+    updateActionItem(meetingId, itemId, patch) {
+      const summary = get().meetings.find((m) => m.id === meetingId)
+      if (!summary) return
+      const actionItems = patch
+        ? summary.actionItems.map((i) => (i.id === itemId ? { ...i, ...patch, edited: true } : i))
+        : summary.actionItems.filter((i) => i.id !== itemId)
+      set((s) => ({ meetings: s.meetings.map((m) => (m.id === meetingId ? { ...m, actionItems } : m)) }))
+      void api.meetings.update(meetingId, { actionItems }).catch((err: Error) => get().toast('error', err.message))
     },
 
     setSearchOpen: (searchOpen) => set({ searchOpen }),

@@ -75,6 +75,25 @@ export interface Meeting {
   calendarEvent?: CalendarEvent
   /** Set when the meeting was created from an imported transcript file. */
   source?: MeetingSource
+  actionItems?: ActionItem[]
+  /** When action items were last extracted by the AI. */
+  actionItemsAt?: string
+}
+
+export interface ActionItem {
+  id: string
+  task: string
+  owner?: string
+  /** Assigned to the user. */
+  mine: boolean
+  /** Deadline, 'YYYY-MM-DD'. */
+  due?: string
+  /** Optional time of the deadline, 'HH:MM' (24 h). */
+  time?: string
+  details?: string
+  done: boolean
+  /** Changed by the user, so a new extraction keeps it as is. */
+  edited?: boolean
 }
 
 export interface MeetingSource {
@@ -146,6 +165,8 @@ export type MeetingPatch = Partial<
     | 'calendarEvent'
     | 'speakers'
     | 'startedAt'
+    | 'actionItems'
+    | 'actionItemsAt'
   >
 >
 
@@ -162,6 +183,9 @@ export interface MeetingSummary {
   /** Named speakers and calendar attendees. */
   participants: string[]
   preview: string
+  actionItems: ActionItem[]
+  /** Whether action items were ever extracted. */
+  actionItemsChecked: boolean
 }
 
 export interface SearchResult {
@@ -215,6 +239,8 @@ export interface Settings {
     autoEnhance: boolean
     /** Let the AI work out remote speakers' names from the conversation. */
     autoNameSpeakers: boolean
+    /** Pull out action items (owners, deadlines) after writing notes. */
+    autoActionItems: boolean
     notesLanguage: string
   }
   transcription: {

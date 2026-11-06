@@ -7,7 +7,7 @@ export function defaultSettings(): Settings {
   ) as Record<LlmProviderId, LlmProviderConfig>
   return {
     userName: '',
-    ai: { provider: 'ollama', providers, autoEnhance: true, autoNameSpeakers: true, notesLanguage: 'auto' },
+    ai: { provider: 'ollama', providers, autoEnhance: true, autoNameSpeakers: true, autoActionItems: true, notesLanguage: 'auto' },
     transcription: {
       model: 'large-v3-q5_0',
       language: 'auto',

@@ -59,6 +59,7 @@ const api: NitroScribeApi = {
   },
   ai: {
     enhance: (req) => invoke('ai:enhance', req),
+    actionItems: (meetingId) => invoke('ai:actionItems', meetingId),
     chat: (req) => invoke('ai:chat', req),
     cancel: (requestId) => invoke('ai:cancel', requestId),
     models: (provider) => invoke('ai:models', provider),

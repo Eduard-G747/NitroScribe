@@ -1,5 +1,6 @@
+import { resolveDue } from '@shared/dueDates'
 import { formatClock, formatDuration, meetingDate, mergeTurns, speakerNamer } from '@shared/format'
-import type { Meeting, Settings, Template } from '@shared/types'
+import type { ActionItem, Meeting, Settings, Template } from '@shared/types'
 
 type PromptMeeting = Pick<Meeting, 'transcript'> & Partial<Pick<Meeting, 'speakers'>>
 
@@ -175,6 +176,141 @@ export function speakerIdPrompt(meeting: Meeting, settings: Settings): { system:
       '</transcript>'
     ].join('\n')
   }
+}
+
+/** Asks for the meeting's action items as JSON, with relative deadlines resolved against the meeting date. */
+export function actionItemsPrompt(meeting: Meeting, settings: Settings): { system: string; user: string } {
+  const date = meetingDate(meeting)
+  const me = settings.userName || 'Me'
+  const day = (d: Date) => `${d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (${d.toISOString().slice(0, 10)})`
+  const notes = (meeting.enhancedMarkdown || '').trim()
+  return {
+    system: 'You extract action items from meetings. You reply with JSON only.',
+    user: [
+      `The meeting "${meeting.title || 'Untitled'}" took place on ${day(date)}. Use that date to turn relative deadlines ("Friday", "next week", "end of month") into real dates.`,
+      `The user taking these notes is "${me}"${settings.userName ? ` (shown as "${me} (me)" in the transcript)` : ''}.`,
+      '',
+      'List every concrete action item: something a person committed to do, or was asked to do.',
+      'Reply with a JSON array. Each item: {"task": "short, specific, starts with a verb", "owner": "name or null", "mine": true or false, "due_text": "the deadline exactly as said, e.g. \\"by Friday\\", or null", "due": "YYYY-MM-DD" or null, "time": "HH:MM" or null, "details": "one sentence: what exactly, for whom, why"}',
+      'Rules:',
+      `- "mine" is true only when ${me} owns the item.`,
+      '- Use a deadline only if one was said; never invent one. A time only if a time was said.',
+      '- Only items actually discussed, no duplicates, at most 20. Reply [] if there are none.',
+      '',
+      notes ? `<ai_notes>\n${notes}\n</ai_notes>` : '',
+      meeting.notesMarkdown.trim() ? `<my_notes>\n${meeting.notesMarkdown.trim()}\n</my_notes>` : '',
+      meeting.transcript.length ? `<transcript>\n${transcriptForPrompt(meeting, notes ? 40_000 : 120_000, settings.userName)}\n</transcript>` : ''
+    ]
+      .filter((l, i, all) => l || all[i - 1])
+      .join('\n')
+  }
+}
+
+export type FoundItem = Omit<ActionItem, 'id' | 'done'> & { dueText?: string }
+
+/** Validates the model's action items; null when the reply isn't a JSON array. */
+export function parseActionItems(text: string): FoundItem[] | null {
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start === -1 || end <= start) return /^\s*\{\s*\}\s*$|none/i.test(text) ? [] : null
+  let raw: unknown
+  try {
+    raw = JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() && !/^(null|none|n\/a|unknown)$/i.test(v.trim()) ? v.trim().slice(0, max) : undefined)
+  const out: FoundItem[] = []
+  for (const r of raw.slice(0, 30)) {
+    if (!r || typeof r !== 'object') continue
+    const o = r as Record<string, unknown>
+    const task = str(o.task ?? o.title ?? o.action, 300)
+    if (!task) continue
+    const due = str(o.due ?? o.deadline ?? o.date, 10)
+    const time = str(o.time, 5)
+    const item: FoundItem = {
+      task,
+      owner: str(o.owner ?? o.assignee, 80),
+      mine: o.mine === true || o.mine === 'true',
+      due: due && /^\d{4}-\d{2}-\d{2}$/.test(due) && !Number.isNaN(Date.parse(due)) ? due : undefined,
+      time: time && /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : undefined,
+      details: str(o.details ?? o.context, 500)
+    }
+    const dueText = str(o.due_text ?? o.dueText, 80)
+    if (dueText) item.dueText = dueText
+    out.push(item)
+  }
+  return out
+}
+
+/** "Owner: task" bullets from the notes' Next steps / Action items section. */
+export function noteActionBullets(markdown: string): { owner?: string; text: string }[] {
+  const out: { owner?: string; text: string }[] = []
+  let inSection = false
+  for (const line of markdown.split('\n')) {
+    const heading = /^#{1,6}\s+(.*)$/.exec(line.trim())
+    if (heading) {
+      inSection = /next steps|action items?|to-?dos?|follow[- ]?ups?|tasks|assignments/i.test(heading[1])
+      continue
+    }
+    const bullet = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.+)$/.exec(line)
+    if (!inSection || !bullet) continue
+    const text = bullet[1].replace(/\*\*/g, '').trim()
+    const m = /^([\p{L}][\p{L}\p{M} .'-]{0,40}?)\s*[:–—-]\s+(.+)$/u.exec(text)
+    out.push(m && m[1].split(/\s+/).length <= 4 ? { owner: m[1].trim(), text: m[2].trim() } : { text })
+  }
+  return out
+}
+
+const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])
+const overlap = (a: Set<string>, b: Set<string>) => {
+  let n = 0
+  for (const w of a) if (b.has(w)) n++
+  return n / Math.max(1, Math.min(a.size, b.size))
+}
+
+/**
+ * Cleans up what a (possibly small, local) model returned: owners from "Name: task" or the notes,
+ * real deadlines from phrases like "by Friday" (counted from the meeting date), "mine" from the user's
+ * name, and no duplicates. Falls back to the notes' Next steps when the model found nothing.
+ */
+export function refineActionItems(found: FoundItem[] | null, meeting: Meeting, userName: string): FoundItem[] {
+  const bullets = noteActionBullets(meeting.enhancedMarkdown ?? '')
+  const base = meetingDate(meeting)
+  const minDue = new Date(base.getFullYear(), base.getMonth(), base.getDate() - 1).toISOString().slice(0, 10)
+  const me = userName.trim().toLowerCase()
+  const isMe = (owner?: string) => {
+    const o = owner?.trim().toLowerCase().replace(/\s*\(me\)$/, '')
+    return !!o && (['me', 'i', 'myself', 'you'].includes(o) || (!!me && (o === me || o === me.split(/\s+/)[0])))
+  }
+  const items: FoundItem[] = found?.length ? found : bullets.map((b) => ({ task: b.text, owner: b.owner, mine: false }))
+  const out: FoundItem[] = []
+  for (const raw of items) {
+    const item: FoundItem = { ...raw }
+    const prefixed = /^([\p{L}][\p{L}\p{M} .'-]{0,40}?):\s+(.+)$/u.exec(item.task)
+    if (prefixed && prefixed[1].split(/\s+/).length <= 4) {
+      item.owner ??= prefixed[1].trim()
+      item.task = prefixed[2].trim()
+    }
+    const w = words(item.task)
+    const match = bullets.map((b) => ({ b, score: overlap(w, words(b.text)) })).sort((x, y) => y.score - x.score)[0]
+    const source = match && match.score >= 0.5 ? match.b : undefined
+    item.owner ??= source?.owner
+    const resolved = resolveDue(item.dueText, base) ?? resolveDue(`${item.task} ${item.details ?? ''}`, base) ?? resolveDue(source?.text, base)
+    item.due = resolved ?? (item.due && item.due >= minDue ? item.due : undefined)
+    // Small models like to invent times; keep one only if a time was actually mentioned.
+    const said = `${item.dueText ?? ''} ${item.task} ${item.details ?? ''} ${source?.text ?? ''}`
+    if (!item.due || !/\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)|\b\d{1,2}:\d{2}\b|\b(noon|midday|midnight)\b/i.test(said)) item.time = undefined
+    item.owner = item.owner?.replace(/\s*\(me\)$/i, '').trim() || undefined
+    if (item.owner) item.mine = isMe(item.owner)
+    item.task = item.task.charAt(0).toUpperCase() + item.task.slice(1)
+    delete item.dueText
+    const key = words(item.task)
+    if (out.some((o) => (o.owner ?? '') === (item.owner ?? '') && overlap(words(o.task), key) >= 0.75)) continue
+    out.push(item)
+  }
+  return out
 }
 
 /** Pulls the first JSON object out of a model reply. */

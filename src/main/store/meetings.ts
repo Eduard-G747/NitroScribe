@@ -60,7 +60,9 @@ function summarize(m: Meeting): MeetingSummary {
     segmentCount: m.transcript.length,
     attendees: m.attendees,
     participants: participants(m),
-    preview
+    preview,
+    actionItems: m.actionItems ?? [],
+    actionItemsChecked: !!m.actionItemsAt
   }
 }
 

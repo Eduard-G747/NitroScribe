@@ -483,7 +483,32 @@ async function audio() {
   if (speakers.length < 2) throw new Error('expected the voices to be separated')
 }
 
-const run = { full, onboarding, install, ui, packaged, import: importing, audio }[scenario]
+/** The Action items page: extraction with the local model from a seeded meeting, check-off, filters. */
+async function actions() {
+  const { app, win } = await launch(dataDir({ onboarded: true, linkWhisper: true, seed: true, theme: 'dark' }))
+  await win.waitForSelector('text=Coming up')
+  await win.click('nav >> text=Action items')
+  await win.waitForSelector("text=/hasn't been checked/")
+  await win.click('button:has-text("Find action items")')
+  await win.waitForSelector('text=/Found \\d+ open action item|No action items found/', { timeout: 300_000 })
+  await win.click('button:has-text("Everyone")')
+  await sleep(500)
+  await shot(win, 'actions-1-everyone')
+  log('ITEMS:\n' + (await win.locator('section').allInnerTexts()).join('\n---\n'))
+  await win.click('button:has-text("Mine")')
+  await sleep(300)
+  await shot(win, 'actions-2-mine')
+  const first = win.locator('button[title="Mark as done"]').first()
+  if (await first.count()) {
+    await first.click()
+    await win.click('button:has-text("Done")')
+    await win.waitForSelector('button[title="Mark as not done"]')
+    log('checked off one item')
+  }
+  await app.close()
+}
+
+const run = { full, onboarding, install, ui, packaged, import: importing, audio, actions }[scenario]
 run()
   .then(() => log('done'))
   .catch(async (err) => {
