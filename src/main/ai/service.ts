@@ -1,9 +1,11 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { isUntitled } from '@shared/format'
+import { inWeek, weekLabel } from '@shared/insights'
 import { hostOf, isLocalUrl } from '@shared/net'
 import { findTemplate } from '@shared/templates'
 import type { ActionItem, AiStreamEvent, ChatRequest, EnhanceRequest, LlmProviderId } from '@shared/types'
+import type { DigestStore } from '../store/digests'
 import type { MeetingStore } from '../store/meetings'
 import type { SettingsStore } from '../store/settings'
 import { log } from '../util/log'
@@ -12,7 +14,10 @@ import {
   actionItemsPrompt,
   cleanMarkdown,
   cleanTitle,
+  digestPrompt,
+  dropEmptySections,
   enhancePrompt,
+  followUpPrompt,
   globalChatSystem,
   meetingChatSystem,
   noteActionBullets,
@@ -29,7 +34,8 @@ export class AiService extends EventEmitter {
 
   constructor(
     private meetings: MeetingStore,
-    private settings: SettingsStore
+    private settings: SettingsStore,
+    private digests?: DigestStore
   ) {
     super()
   }
@@ -143,6 +149,43 @@ export class AiService extends EventEmitter {
             await this.extractActionItems(req.meetingId).catch((err: Error) => log(`action items skipped: ${err.message}`))
           }
         })
+      }
+    )
+  }
+
+  /** Streams a recap email ("Subject: …" first) for the meeting. */
+  followUp(meetingId: string): string {
+    return this.run(async (signal, onDelta) => {
+      const meeting = await this.meetings.get(meetingId)
+      if (!meeting) throw new Error('Meeting not found')
+      if (!meeting.transcript.length && !meeting.notesMarkdown.trim() && !meeting.enhancedMarkdown?.trim()) {
+        throw new Error('Nothing to write about yet. Record the meeting or write some notes first.')
+      }
+      const settings = this.settings.get()
+      const reply = await streamChat({
+        ...this.llm(),
+        system: meetingChatSystem(meeting, settings),
+        messages: [{ role: 'user', content: followUpPrompt(meeting, settings) }],
+        signal,
+        onDelta
+      })
+      return reply.trim()
+    })
+  }
+
+  /** Streams (and caches) a review of the week starting on Monday `week` ('YYYY-MM-DD'). */
+  digest(week: string): string {
+    return this.run(
+      async (signal, onDelta) => {
+        const summaries = (await this.meetings.list()).filter((s) => inWeek(s, week)).slice(0, 40)
+        if (!summaries.length) throw new Error('There were no meetings that week.')
+        const meetings = (await Promise.all(summaries.map((s) => this.meetings.get(s.id)))).filter((m): m is NonNullable<typeof m> => !!m)
+        const open = (await this.meetings.list()).flatMap((s) => s.actionItems.filter((i) => !i.done).map((item) => ({ item, meeting: s.title || 'Untitled' }))).slice(0, 60)
+        const { system, user } = digestPrompt(meetings.reverse(), open, weekLabel(week), this.settings.get())
+        return dropEmptySections(cleanMarkdown(await streamChat({ ...this.llm(), system, messages: [{ role: 'user', content: user }], signal, onDelta })))
+      },
+      async (markdown) => {
+        await this.digests?.set({ week, markdown, createdAt: new Date().toISOString() })
       }
     )
   }

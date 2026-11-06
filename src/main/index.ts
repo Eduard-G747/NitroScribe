@@ -34,6 +34,8 @@ import type {
 import { MAX_IMPORT_BYTES, meetingFromImport, previewFile, previewText } from './import'
 import { fileTitle, findDate } from './import/parse'
 import { UpdateChecker } from './updates'
+import { DigestStore } from './store/digests'
+import { inWeek, shiftWeek, weekOf } from '@shared/insights'
 import { AiService } from './ai/service'
 import { CalendarService, fetchIcs, parseIcs } from './calendar'
 import { RecordingController } from './recording'
@@ -110,7 +112,8 @@ async function main() {
   await Promise.all([settings.init(), meetings.init(), voices.init()])
   await whisper.init()
   const recorder = new RecordingController(meetings, settings, whisper, voices, (modelPath) => createWorkerEmbedder(createEmbedWorker, modelPath))
-  const ai = new AiService(meetings, settings)
+  const digests = new DigestStore(dataDir)
+  const ai = new AiService(meetings, settings, digests)
   const calendar = new CalendarService(() => settings.get().calendars)
 
   let win: BrowserWindow | null = null
@@ -304,6 +307,21 @@ async function main() {
     n.show()
   })
   updates.start()
+
+  // Weekly digest: the first time the app runs in a new week, say that last week's review is ready.
+  const announceDigest = async () => {
+    const s = settings.get()
+    const lastWeek = shiftWeek(weekOf(new Date()), -1)
+    if (!s.digest.notify || s.digest.seenWeek === lastWeek || !Notification.isSupported()) return
+    const count = (await meetings.list()).filter((m) => inWeek(m, lastWeek)).length
+    if (!count) return
+    await settings.update({ digest: { seenWeek: lastWeek } })
+    const n = new Notification({ title: 'Your week in review is ready', body: `${count} meeting${count === 1 ? '' : 's'} last week. Click to see decisions and open action items.`, icon: resource('icon.png') })
+    n.on('click', () => command({ type: 'open-digest' }))
+    n.show()
+  }
+  setTimeout(() => void announceDigest(), 30_000)
+  const digestTimer = setInterval(() => void announceDigest(), 3_600_000)
   recorder.on('fileProgress', (e: AudioImportProgress) => send('import:audioProgress', e))
   ai.on('stream', (e) => send('ai:stream', e))
   ai.on('speakersNamed', (meetingId: string, speakers: Record<string, MeetingSpeaker>) => {
@@ -385,7 +403,10 @@ async function main() {
     recorder.cancelFile(id)
     await meetings.delete(id)
   })
-  handle('meetings:search', (q: string) => meetings.search(q))
+  handle('meetings:search', (q: string) => meetings.search(q, 40, settings.get().userName))
+  handle('ai:followUp', (meetingId: string) => ai.followUp(meetingId))
+  handle('ai:digest', (week: string) => ai.digest(String(week)))
+  handle('digest:get', (week: string) => digests.get(String(week)))
 
   handle('recording:start', async (id: string) => {
     // macOS asks for microphone access once; Windows handles it in its privacy settings.
@@ -477,7 +498,7 @@ async function main() {
   handle('app:updateInfo', () => updates.latest)
   handle('app:openUpdate', () => updates.latest && shell.openExternal(updates.latest.url))
   handle('app:openExternal', async (url: string) => {
-    if (/^https?:\/\//i.test(url)) await shell.openExternal(url)
+    if (/^(https?:\/\/|mailto:)/i.test(url)) await shell.openExternal(url)
   })
   handle('app:openFolder', async (which: 'data' | 'logs') => {
     const dir = which === 'logs' ? logsDir : dataDir
@@ -499,6 +520,7 @@ async function main() {
         recorder.dispose()
         calendar.stop()
         updates.stop()
+        clearInterval(digestTimer)
         tray.destroy()
         cleanedUp = true
         app.quit()

@@ -46,6 +46,8 @@ describe('MeetingStore', () => {
     const results = await store.search('pricing')
     expect(results.map((r) => r.id)).toEqual([a.id, b.id])
     expect(results[1].snippet).toContain('pricing')
+    expect(results[1].moments).toEqual([{ segmentId: 'x', start: 0, speaker: expect.any(String), text: 'We should revisit pricing for the enterprise plan soon' }])
+    expect(results[0].moments).toEqual([])
     expect(await store.search('enterprise pricing')).toHaveLength(1)
     expect(await store.search('zzz')).toHaveLength(0)
     await store.flush()

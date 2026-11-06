@@ -194,6 +194,15 @@ export interface SearchResult {
   createdAt: string
   snippet: string
   score: number
+  /** Transcript lines where the words were said. */
+  moments: { segmentId: string; start: number; speaker: string; text: string }[]
+}
+
+/** A week's AI summary, cached by the Monday it starts on ('YYYY-MM-DD'). */
+export interface Digest {
+  week: string
+  markdown: string
+  createdAt: string
 }
 
 export interface Template {
@@ -270,6 +279,12 @@ export interface Settings {
   privacy: {
     /** Meeting data may only be sent to AI servers on this PC or the local network. */
     localOnly: boolean
+  }
+  digest: {
+    /** Remind on Mondays that last week's digest is ready. */
+    notify: boolean
+    /** Monday of the last week whose digest was opened or announced. */
+    seenWeek: string
   }
   updates: {
     /** Ask GitHub once a day whether a new version is out. */
@@ -368,6 +383,7 @@ export type AppCommand =
   | { type: 'start-from-event'; event: CalendarEvent }
   | { type: 'stop-recording' }
   | { type: 'open-settings' }
+  | { type: 'open-digest' }
 
 export interface SaveFileRequest {
   defaultName: string

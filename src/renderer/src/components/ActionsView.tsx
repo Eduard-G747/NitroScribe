@@ -13,7 +13,7 @@ interface Entry {
   meeting: MeetingSummary
 }
 
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+export const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const localDate = (due: string) => new Date(`${due}T12:00:00`)
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
 const context = ({ item, meeting }: Entry): ItemContext => ({ item, meetingTitle: meeting.title, meetingDate: meetingDate(meeting) })
@@ -47,7 +47,7 @@ function DueEditor({ item, onSave, close }: { item: ActionItem; onSave: (p: Part
   )
 }
 
-function ItemRow({ entry, today }: { entry: Entry; today: string }) {
+export function ItemRow({ entry, today }: { entry: Entry; today: string }) {
   const { item, meeting } = entry
   const { updateActionItem, openMeeting, toast } = useApp.getState()
   const [editing, setEditing] = useState(false)
@@ -110,9 +110,9 @@ function ItemRow({ entry, today }: { entry: Entry; today: string }) {
             {(close) => <DueEditor item={item} onSave={save} close={close} />}
           </Dropdown>
           {item.owner && !item.mine && (
-            <span className="inline-flex items-center gap-1">
+            <button onClick={() => void useApp.getState().go({ name: 'person', key: item.owner!.toLowerCase() })} className="inline-flex items-center gap-1 hover:text-ink" title="See everything with this person">
               <Avatar name={item.owner} size={14} /> {item.owner}
-            </span>
+            </button>
           )}
           <button onClick={() => void openMeeting(meeting.id)} className="truncate hover:text-ink hover:underline" title="Open the meeting">
             {meeting.title || 'Untitled meeting'} · {meetingDate(meeting).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

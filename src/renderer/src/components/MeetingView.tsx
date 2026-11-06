@@ -1,12 +1,12 @@
 import clsx from 'clsx'
-import { CalendarDays, ChevronRight, Clock, Copy, Download, FileText, MoreHorizontal, Sparkles, Trash2, Upload, Video } from 'lucide-react'
+import { CalendarDays, ChevronRight, Clock, Copy, Download, FileText, Mail, MoreHorizontal, Sparkles, Trash2, Upload, Video } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDuration, meetingDate, meetingFileBase, remoteSpeakers } from '@shared/format'
 import { findTemplate } from '@shared/templates'
 import type { Meeting, MeetingPatch } from '@shared/types'
 import { dayLabel, toLocalInput } from '../lib/dates'
 import { htmlToMarkdown, markdownToHtml } from '../lib/markdown'
-import { useApp } from '../lib/store'
+import { aiReady, useApp } from '../lib/store'
 import { BottomBar } from './BottomBar'
 import { ChatPanel } from './ChatPanel'
 import { NotesEditor } from './NotesEditor'
@@ -257,7 +257,7 @@ export function MeetingView() {
   const panel = useApp((s) => s.panel)
   const enhancing = useApp((s) => s.enhancing)
   const recording = useApp((s) => s.recording)
-  const { patchCurrent, setPanel, goNotes } = useApp.getState()
+  const { patchCurrent, setPanel, goNotes, setFollowUp, openSettings } = useApp.getState()
 
   const saveNotes = useDebounced((id: string, html: string) => saveFor(id, { notesHtml: html, notesMarkdown: htmlToMarkdown(html) }), 250)
   const saveEnhanced = useDebounced((id: string, html: string) => saveFor(id, { enhancedHtml: html, enhancedMarkdown: htmlToMarkdown(html) }), 400)
@@ -277,6 +277,17 @@ export function MeetingView() {
           </button>
         }
       >
+        {(meeting.transcript.length > 0 || !!meeting.enhancedMarkdown) && !busy && recording.meetingId !== meeting.id && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="no-drag"
+            onClick={() => (aiReady(useApp.getState().view) ? setFollowUp(meeting.id) : openSettings('ai'))}
+            title="Write a recap email with decisions and action items"
+          >
+            <Mail className="size-3.5" /> Follow-up email
+          </Button>
+        )}
         <MoreMenu meeting={meeting} />
       </TopBar>
       <div className="flex min-h-0 flex-1">

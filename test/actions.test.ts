@@ -3,7 +3,14 @@ import { actionItemsToIcs, googleCalendarUrl } from '@shared/calendarExport'
 import { defaultSettings } from '@shared/defaults'
 import type { ActionItem, Meeting } from '@shared/types'
 import { resolveDue } from '@shared/dueDates'
-import { actionItemsPrompt, parseActionItems, refineActionItems } from '../src/main/ai/prompts'
+import { actionItemsPrompt, dropEmptySections, parseActionItems, refineActionItems } from '../src/main/ai/prompts'
+
+describe('weekly review cleanup', () => {
+  it('drops sections a small model filled with "None"', () => {
+    const md = '### The week in short\nOne meeting.\n\n### Decisions\n- Beta on Nov 15 (Q4 review)\n\n### Open loops\nNone\n\n### Coming up\n- None.\n\nNote: There are no upcoming tasks this week.'
+    expect(dropEmptySections(md)).toBe('### The week in short\nOne meeting.\n\n### Decisions\n- Beta on Nov 15 (Q4 review)')
+  })
+})
 
 describe('deadlines from what people said', () => {
   const wed = new Date(2026, 10, 4) // Wednesday, Nov 4 2026

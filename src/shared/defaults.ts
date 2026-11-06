@@ -26,7 +26,8 @@ export function defaultSettings(): Settings {
     notifyMeetings: true,
     general: { launchAtLogin: false, closeToTray: true, onboarded: false, theme: 'system' },
     privacy: { localOnly: true },
-    updates: { check: true, dismissed: '' }
+    updates: { check: true, dismissed: '' },
+    digest: { notify: true, seenWeek: '' }
   }
 }
 
@@ -46,6 +47,7 @@ export function mergeSettings(base: Settings, stored: unknown): Settings {
     general: { ...base.general, ...s.general },
     privacy: { ...base.privacy, ...s.privacy },
     updates: { ...base.updates, ...s.updates },
+    digest: { ...base.digest, ...s.digest },
     customTemplates: s.customTemplates ?? base.customTemplates,
     calendars: s.calendars ?? base.calendars
   }

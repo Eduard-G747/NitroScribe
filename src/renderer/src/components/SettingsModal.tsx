@@ -98,6 +98,9 @@ function GeneralTab() {
         <Field inline label="Remind me when a calendar meeting starts" hint="Shows a notification you can click to start taking notes.">
           <Toggle checked={s.notifyMeetings} onChange={(v) => void update({ notifyMeetings: v })} />
         </Field>
+        <Field inline label="Weekly review reminder" hint="At the start of each week, a notification that last week's review is ready.">
+          <Toggle checked={s.digest.notify} onChange={(v) => void update({ digest: { notify: v } })} />
+        </Field>
       </Section>
     </>
   )

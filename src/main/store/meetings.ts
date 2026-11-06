@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { speakerNamer } from '@shared/format'
 import type { Meeting, MeetingPatch, MeetingSpeaker, MeetingSummary, SearchResult, SpeakerNameSource, TranscriptSegment } from '@shared/types'
 import { readJson, writeFileAtomic, writeFileAtomicSync } from '../util/fsx'
 
@@ -226,7 +227,7 @@ export class MeetingStore extends EventEmitter {
   }
 
   /** Full-text search with simple TF scoring and title boost. Multi-word queries require all terms. */
-  async search(query: string, limit = 40): Promise<SearchResult[]> {
+  async search(query: string, limit = 40, userName = ''): Promise<SearchResult[]> {
     const terms = [...new Set(tokenize(query))]
     if (!terms.length) return []
     const scored = this.rank(terms).slice(0, limit)
@@ -235,7 +236,16 @@ export class MeetingStore extends EventEmitter {
       const m = await this.get(entry.summary.id)
       if (!m) continue
       const body = [plainMarkdown(m.enhancedMarkdown ?? ''), plainMarkdown(m.notesMarkdown), plainTranscript(m)].join('\n')
-      results.push({ id: m.id, title: m.title, createdAt: m.startedAt ?? m.createdAt, snippet: makeSnippet(body, terms), score })
+      // The exact moments in the transcript where the words were said.
+      const nameOf = speakerNamer(m, userName)
+      const moments = m.transcript
+        .map((s) => ({ s, hits: terms.reduce((n, t) => n + countOccurrences(s.text.toLowerCase(), t), 0) }))
+        .filter((x) => x.hits > 0)
+        .sort((a, b) => b.hits - a.hits || a.s.start - b.s.start)
+        .slice(0, 4)
+        .sort((a, b) => a.s.start - b.s.start)
+        .map(({ s }) => ({ segmentId: s.id, start: s.start, speaker: nameOf(s), text: s.text.slice(0, 220) }))
+      results.push({ id: m.id, title: m.title, createdAt: m.startedAt ?? m.createdAt, snippet: makeSnippet(body, terms), score, moments })
     }
     return results
   }

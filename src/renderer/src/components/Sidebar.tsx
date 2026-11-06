@@ -1,5 +1,6 @@
 import clsx from 'clsx'
-import { CalendarDays, ChevronsUpDown, Download, Home, ListChecks, Lock, MessageCircle, Moon, PanelLeft, Search, Settings2, Sun, X, type LucideIcon } from 'lucide-react'
+import { shiftWeek, weekOf } from '@shared/insights'
+import { CalendarDays, CalendarRange, ChevronsUpDown, Download, Home, ListChecks, Lock, MessageCircle, Users, Moon, PanelLeft, Search, Settings2, Sun, X, type LucideIcon } from 'lucide-react'
 import logo from '../assets/logo.png'
 import { useApp } from '../lib/store'
 import { Bars, IconButton } from './ui'
@@ -80,7 +81,7 @@ export function Sidebar() {
   const collapsed = useApp((s) => s.sidebarCollapsed)
   const userName = useApp((s) => s.view?.settings.userName ?? '')
   const theme = useApp((s) => s.view?.settings.general.theme ?? 'system')
-  const { goHome, goNotes, goActions, openMeeting, openSettings, setGlobalChat, setSearchOpen, toggleSidebar, setTheme } = useApp.getState()
+  const { goHome, goNotes, goActions, go, openMeeting, openSettings, setGlobalChat, setSearchOpen, toggleSidebar, setTheme } = useApp.getState()
   const openActions = meetings.reduce((n, m) => n + m.actionItems.filter((i) => i.mine && !i.done).length, 0)
   if (collapsed) return null
   const recordingMeeting = recording.status !== 'idle' ? meetings.find((m) => m.id === recording.meetingId) : undefined
@@ -106,6 +107,13 @@ export function Sidebar() {
           active={route.name === 'actions'}
           onClick={() => void goActions()}
           trailing={openActions > 0 && <span className="text-[11px] text-faint">{openActions}</span>}
+        />
+        <NavItem icon={Users} label="People" active={route.name === 'people' || route.name === 'person'} onClick={() => void go({ name: 'people' })} />
+        <NavItem
+          icon={CalendarRange}
+          label="Week in review"
+          active={route.name === 'digest'}
+          onClick={() => void go({ name: 'digest', week: shiftWeek(weekOf(new Date()), new Date().getDay() === 0 || new Date().getDay() > 3 ? 0 : -1) })}
         />
       </nav>
 

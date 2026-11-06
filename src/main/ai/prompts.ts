@@ -178,6 +178,64 @@ export function speakerIdPrompt(meeting: Meeting, settings: Settings): { system:
   }
 }
 
+const dueText = (i: ActionItem) =>
+  i.due ? ` (by ${new Date(`${i.due}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${i.time ? ` ${i.time}` : ''})` : ''
+
+/** The user message for a recap email; the system prompt is the meeting chat context. */
+export function followUpPrompt(meeting: Meeting, settings: Settings): string {
+  const items = (meeting.actionItems ?? []).filter((i) => !i.done)
+  return [
+    'Write a follow-up email I can send to the other participants right after this meeting.',
+    'Format exactly:',
+    'Subject: <short, specific subject>',
+    '',
+    '<body>',
+    '',
+    'The body: a greeting (first names if known), one or two sentences on what the meeting was about and how it ended, "Decisions:" as short bullets (only real decisions; skip the section if there were none), "Action items:" as bullets like "- Name: task (by date)", the next meeting if one was set, then a short friendly closing signed with my name' +
+      (settings.userName ? ` (${settings.userName})` : '') +
+      '.',
+    'Plain text only: no markdown headings or bold. Bullets start with "- ". Under 200 words. Only facts from the meeting.',
+    languageRule(settings, meeting),
+    items.length ? `\nUse these action items (already checked):\n${items.map((i) => `- ${i.mine ? settings.userName || 'Me' : (i.owner ?? 'Someone')}: ${i.task}${dueText(i)}`).join('\n')}` : ''
+  ].join('\n')
+}
+
+/** A short review of a week of meetings. */
+export function digestPrompt(meetings: Meeting[], open: { item: ActionItem; meeting: string }[], label: string, settings: Settings): { system: string; user: string } {
+  const per = Math.max(1200, Math.floor(60_000 / Math.max(1, meetings.length)))
+  const records = meetings.map((m) => {
+    const body = (m.enhancedMarkdown?.trim() || m.notesMarkdown.trim() || transcriptForPrompt(m, per, settings.userName)).slice(0, per)
+    return `<meeting title="${(m.title || 'Untitled').replace(/"/g, "'")}" date="${meetingDate(m).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}">\n${body}\n</meeting>`
+  })
+  return {
+    system: `You write a short weekly review of ${settings.userName || 'the user'}'s meetings. Be concrete, use names and numbers, never invent anything.`,
+    user: [
+      `Review the week of ${label}: ${meetings.length} meeting${meetings.length === 1 ? '' : 's'}.`,
+      'Use these Markdown sections: `### The week in short` (2-4 sentences: what happened, what moved forward, what is at risk), `### Decisions` (every concrete decision, number or commitment from the notes, as bullets ending with the meeting name in parentheses), `### Risks and questions` (only if any were raised).',
+      'The open action items are listed separately below your review, so don\'t repeat them as a list. Leave out a section that would be empty; never write "None".',
+      settings.ai.notesLanguage !== 'auto' ? `Write in ${settings.ai.notesLanguage}.` : 'Write in the language most of the meetings used.',
+      '',
+      ...records,
+      open.length ? `\nOpen action items:\n${open.map(({ item, meeting }) => `- ${item.mine ? 'Me' : (item.owner ?? 'Someone')}: ${item.task}${dueText(item)} [${meeting}]`).join('\n')}` : ''
+    ].join('\n')
+  }
+}
+
+/** Removes sections a small model filled with "None", and "Note: there is nothing…" filler. */
+export function dropEmptySections(markdown: string): string {
+  const empty = /^(?:[-*]\s*)?(?:none|n\/a|nothing(?: to report)?|no (?:\w+ ?){1,3})\.?$/i
+  return markdown
+    .replace(/\n*^\**note:?\**.*\b(no|none|nothing)\b.*$/gim, '')
+    .split(/(?=^#{2,4} )/m)
+    .filter((part) => {
+      if (!/^#{2,4} /.test(part)) return true
+      const body = part.replace(/^#{2,4} .*\n?/, '').trim()
+      return body && !body.split('\n').every((l) => !l.trim() || empty.test(l.trim()))
+    })
+    .join('')
+    .trim()
+}
+
 /** Asks for the meeting's action items as JSON, with relative deadlines resolved against the meeting date. */
 export function actionItemsPrompt(meeting: Meeting, settings: Settings): { system: string; user: string } {
   const date = meetingDate(meeting)

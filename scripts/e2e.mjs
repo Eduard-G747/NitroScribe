@@ -232,7 +232,7 @@ async function ui() {
     await win.waitForSelector('aside.border-l >> text=Priya Patel')
     await shot(win, `${theme}-renamed`)
     await win.keyboard.press('Control+K')
-    await win.fill('input[placeholder="Search all your meetings…"]', 'budget')
+    await win.fill('input[placeholder="Search meetings, or what someone said…"]', 'budget')
     await sleep(500)
     await shot(win, `${theme}-search`)
     await win.keyboard.press('Escape')
@@ -508,7 +508,61 @@ async function actions() {
   await app.close()
 }
 
-const run = { full, onboarding, install, ui, packaged, import: importing, audio, actions }[scenario]
+/** Search moments + talk time, follow-up email and weekly review (local model), people pages. */
+async function insights() {
+  const dir = dataDir({ onboarded: true, linkWhisper: true, seed: true })
+  const file = join(dir, 'meetings', 'demo-roadmap.json')
+  const m = JSON.parse(readFileSync(file, 'utf8'))
+  const due = (days) => {
+    const d = new Date(m.startedAt)
+    d.setDate(d.getDate() + days)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  m.actionItems = [
+    { id: 'a1', task: 'Share the updated timeline', owner: 'Sarah', mine: false, due: due(2), done: false },
+    { id: 'a2', task: 'Start the API migration', owner: 'Marcus', mine: false, due: due(5), done: false },
+    { id: 'a3', task: 'Schedule a sync', owner: 'Eduardo', mine: true, due: due(6), done: false }
+  ]
+  m.actionItemsAt = m.startedAt
+  writeFileSync(file, JSON.stringify(m))
+  const { app, win } = await launch(dir)
+  await win.waitForSelector('text=Coming up')
+
+  await win.keyboard.press('Control+K')
+  await win.keyboard.type('budget')
+  const moment = win.locator('button[title="Jump to this moment in the transcript"]').first()
+  await moment.waitFor()
+  await shot(win, 'insights-1-search')
+  await moment.click()
+  await win.waitForSelector('[data-turn].ring-2')
+  await shot(win, 'insights-2-jump-talktime')
+  log('talk time: ' + (await win.locator('[title="Share of speaking time"]').innerText()).replace(/\n/g, ' '))
+
+  await win.click('button:has-text("Follow-up email")')
+  await win.waitForSelector('button:has-text("Copy email"):not([disabled])', { timeout: 300_000 })
+  await shot(win, 'insights-3-followup')
+  log('EMAIL body:\n' + (await win.locator('textarea').inputValue()))
+  await win.keyboard.press('Escape')
+
+  await win.click('nav >> text=People')
+  await win.waitForSelector('text=Sarah Chen')
+  await shot(win, 'insights-4-people')
+  await win.click('text=Sarah Chen')
+  await win.waitForSelector('text=They promised')
+  await shot(win, 'insights-5-person')
+  log('promised: ' + (await win.locator('section').first().innerText()).replace(/\n+/g, ' | '))
+
+  await win.click('nav >> text=Week in review')
+  await win.waitForSelector('h1:has-text("Week in review")')
+  const write = win.locator('button:has-text("Write review")')
+  if (await write.count()) await write.click()
+  await win.waitForSelector('button:has-text("Rewrite")', { timeout: 300_000 })
+  await shot(win, 'insights-6-digest')
+  log('DIGEST:\n' + (await win.locator('.md').first().innerText()))
+  await app.close()
+}
+
+const run = { full, onboarding, install, ui, packaged, import: importing, audio, actions, insights }[scenario]
 run()
   .then(() => log('done'))
   .catch(async (err) => {

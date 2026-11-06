@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AppInfo, CalendarSnapshot } from '@shared/api'
+import { shiftWeek, weekOf } from '@shared/insights'
 import { isLocalUrl } from '@shared/net'
 import { providerPreset } from '@shared/providers'
 import type {
@@ -36,7 +37,14 @@ import { Recorder, type Levels } from './recorder'
 
 const api = window.api
 
-export type Route = { name: 'home' } | { name: 'notes' } | { name: 'actions' } | { name: 'meeting'; id: string }
+export type Route =
+  | { name: 'home' }
+  | { name: 'notes' }
+  | { name: 'actions' }
+  | { name: 'people' }
+  | { name: 'person'; key: string }
+  | { name: 'digest'; week: string }
+  | { name: 'meeting'; id: string }
 export type SettingsTab = 'general' | 'transcription' | 'ai' | 'templates' | 'calendar' | 'data'
 export type Panel = 'transcript' | 'chat' | null
 
@@ -94,6 +102,14 @@ interface Store {
   finishImport(req: ImportRequest, opts: { summarize: boolean; templateId: string }): Promise<void>
   goNotes(): Promise<void>
   goActions(): Promise<void>
+  /** Opens a page that isn't a meeting (people, a person, a weekly digest). */
+  go(route: Exclude<Route, { name: 'meeting' }>): Promise<void>
+  /** A transcript line to scroll to once the meeting is open. */
+  jumpTo: { meetingId: string; segmentId: string } | null
+  openMeetingAt(id: string, segmentId: string): Promise<void>
+  /** Meeting whose follow-up email dialog is open. */
+  followUpFor: string | null
+  setFollowUp(meetingId: string | null): void
   /** Progress while action items are extracted from several meetings. */
   scanning: { done: number; total: number } | null
   findActionItems(meetingIds: string[]): Promise<void>
@@ -223,6 +239,7 @@ export const useApp = create<Store>((set, get) => {
     else if (c.type === 'start-from-event') void s.newMeeting({ record: true, event: c.event })
     else if (c.type === 'stop-recording') void s.stopRecording()
     else if (c.type === 'open-settings') s.openSettings()
+    else if (c.type === 'open-digest') void s.go({ name: 'digest', week: shiftWeek(weekOf(new Date()), -1) })
   }
 
   return {
@@ -312,9 +329,24 @@ export const useApp = create<Store>((set, get) => {
     },
 
     async goActions() {
-      await get().flushPending()
-      set({ route: { name: 'actions' }, current: null, panel: null, globalChatOpen: false })
+      await get().go({ name: 'actions' })
     },
+
+    async go(route) {
+      await get().flushPending()
+      set({ route, current: null, panel: null, globalChatOpen: false })
+    },
+
+    jumpTo: null,
+
+    async openMeetingAt(id, segmentId) {
+      set({ searchOpen: false })
+      await get().openMeeting(id)
+      set({ panel: 'transcript', jumpTo: { meetingId: id, segmentId } })
+    },
+
+    followUpFor: null,
+    setFollowUp: (followUpFor) => set({ followUpFor }),
 
     scanning: null,
 

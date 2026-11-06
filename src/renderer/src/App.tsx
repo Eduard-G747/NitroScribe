@@ -2,6 +2,9 @@ import { Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ActionsView } from './components/ActionsView'
 import { ChatPanel } from './components/ChatPanel'
+import { DigestView } from './components/DigestView'
+import { FollowUpDialog } from './components/FollowUpDialog'
+import { PeopleView, PersonView } from './components/PeopleView'
 import { HomeView } from './components/HomeView'
 import { ImportDialog } from './components/ImportDialog'
 import { MeetingView } from './components/MeetingView'
@@ -85,7 +88,21 @@ export function App() {
       <Sidebar />
       <div className="flex min-w-0 flex-1">
         <div className="min-w-0 flex-1">
-          {route.name === 'meeting' ? <MeetingView /> : route.name === 'notes' ? <NotesView /> : route.name === 'actions' ? <ActionsView /> : <HomeView />}
+          {route.name === 'meeting' ? (
+            <MeetingView />
+          ) : route.name === 'notes' ? (
+            <NotesView />
+          ) : route.name === 'actions' ? (
+            <ActionsView />
+          ) : route.name === 'people' ? (
+            <PeopleView />
+          ) : route.name === 'person' ? (
+            <PersonView key={route.key} personKey={route.key} />
+          ) : route.name === 'digest' ? (
+            <DigestView key={route.week} week={route.week} />
+          ) : (
+            <HomeView />
+          )}
         </div>
         {globalChatOpen && (
           <aside className="flex w-[420px] flex-none flex-col border-l border-edge bg-app">
@@ -97,6 +114,7 @@ export function App() {
         )}
       </div>
       <SearchPalette />
+      <FollowUpDialog />
       <ImportDialog />
       <SettingsModal />
       <Onboarding />

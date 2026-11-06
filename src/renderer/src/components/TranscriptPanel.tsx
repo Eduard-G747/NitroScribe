@@ -1,9 +1,11 @@
 import clsx from 'clsx'
 import { AlertTriangle, Copy, Download, Sparkles, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { talkTime } from '@shared/insights'
 import type { VoiceSummary } from '@shared/api'
 import {
   formatClock,
+  formatDuration,
   meetingFileBase,
   mergeTurns,
   remoteSpeakers,
@@ -128,14 +130,31 @@ export function TranscriptPanel({ meeting }: { meeting: Meeting }) {
   const nameOf = useMemo(() => speakerNamer(meeting, userName), [meeting, userName])
   const turns = useMemo(() => mergeTurns(meeting.transcript, nameOf), [meeting.transcript, nameOf])
   const people = useMemo(() => remoteSpeakers(meeting, userName), [meeting, userName])
+  const talk = useMemo(() => talkTime(meeting, userName), [meeting, userName])
+  const jumpTo = useApp((s) => s.jumpTo)
+  const [flash, setFlash] = useState<string | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const live = recording.meetingId === meeting.id && recording.status !== 'idle'
 
   useEffect(() => {
     const el = scroller.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [turns.length])
+    if (el && stick.current && !jumpTo) el.scrollTop = el.scrollHeight
+  }, [turns.length, jumpTo])
+
+  // Coming from search: scroll to the moment and highlight it.
+  useEffect(() => {
+    if (!jumpTo || jumpTo.meetingId !== meeting.id) return
+    const turn = turns.find((t) => t.ids.includes(jumpTo.segmentId))
+    const el = turn && scroller.current?.querySelector<HTMLElement>(`[data-turn="${turn.ids[0]}"]`)
+    if (!turn || !el) return
+    stick.current = false
+    el.scrollIntoView({ block: 'center' })
+    setFlash(turn.ids[0])
+    useApp.setState({ jumpTo: null })
+    const t = setTimeout(() => setFlash(null), 2500)
+    return () => clearTimeout(t)
+  }, [jumpTo, turns, meeting.id])
 
   const copy = async () => {
     await window.api.files.copy(transcriptToText(meeting, userName))
@@ -201,6 +220,24 @@ export function TranscriptPanel({ meeting }: { meeting: Meeting }) {
         </div>
       )}
 
+      {talk.length > 1 && !live && (
+        <div className="flex-none border-b border-edge px-4 py-2.5" title="Share of speaking time">
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-hover">
+            {talk.map((p) => (
+              <span key={p.name} style={{ width: `${p.share * 100}%`, background: p.key === 'me' ? 'var(--accent)' : speakerColor(p.key) }} />
+            ))}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-muted">
+            {talk.map((p) => (
+              <span key={p.name} className="inline-flex items-center gap-1">
+                <span className="size-1.5 rounded-full" style={{ background: p.key === 'me' ? 'var(--accent)' : speakerColor(p.key) }} />
+                {p.name} {Math.round(p.share * 100)}%<span className="text-faint">· {p.ms < 60_000 ? `${Math.round(p.ms / 1000)} s` : formatDuration(p.ms)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {live && recording.status === 'recording' && !systemAudio && (
         <div className="mx-4 mt-3 flex gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[12.5px] text-amber-700 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 size-3.5 flex-none" />
@@ -235,7 +272,11 @@ export function TranscriptPanel({ meeting }: { meeting: Meeting }) {
           </div>
         )}
         {turns.map((t) => (
-          <div key={t.ids[0]} className={clsx('flex flex-col', t.speaker === 'me' ? 'items-end' : 'items-start')}>
+          <div
+            key={t.ids[0]}
+            data-turn={t.ids[0]}
+            className={clsx('flex flex-col rounded-2xl transition-shadow duration-700', t.speaker === 'me' ? 'items-end' : 'items-start', flash === t.ids[0] && 'ring-2 ring-accent ring-offset-4 ring-offset-app')}
+          >
             <div className="mb-1 flex items-center gap-1.5 px-1 text-[11.5px] text-faint">
               <SpeakerLabel meeting={meeting} speakerId={t.speakerId} name={t.name} />
               <span>{formatClock(t.start)}</span>

@@ -14,6 +14,11 @@ NitroScribe transcribes your calls on your own computer, tells the people on the
 - **AI notes.** Jot rough notes during the call. Afterwards NitroScribe expands them with the details from the transcript: your words stay black and AI additions are gray. Templates cover summaries, 1:1s, stand-ups, sales calls, interviews and more, and you can write your own.
 - **Import old meetings.** Drop in a transcript from Zoom, Teams, Google Meet or Otter, or paste one. You can also drop in a recording (mp3, m4a, wav, ogg, flac or a video) to have it transcribed, with speakers separated, on your computer. Set its date and get a summary. Any meeting's date can be changed later by clicking it.
 - **Action items across all your meetings.** Each comes with its owner and a real deadline: "by Friday" becomes the actual date, counted from when the meeting happened. Check them off, add one to Google Calendar in a click, or export every deadline as a calendar file for Google, Outlook or Apple Calendar.
+- **Follow-up email in one click.** A recap with decisions and who owes what, ready to copy or open in your email app.
+- **Week in review.** Each Monday you get a summary of last week's meetings: decisions, what's still open, and what's overdue.
+- **People.** Click anyone to see every meeting you've had with them, what they promised, and what you owe them.
+- **Talk time.** See how long each person spoke in a meeting.
+- **Search what was said.** Search finds the exact moment someone said "pricing" and jumps to it in the transcript.
 - **Ask anything** about one meeting or your whole history ("what did we decide about pricing last month?").
 - **Your choice of AI.** Local models through Ollama or LM Studio by default. Cloud providers (OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, DeepSeek, xAI or any OpenAI-compatible API) are opt-in.
 - **Unlimited history on your disk.** Meetings are plain files that you can search (Ctrl+K), export to Markdown, or download as TXT/SRT/JSON transcripts.

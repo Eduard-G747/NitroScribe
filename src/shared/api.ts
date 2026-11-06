@@ -6,6 +6,7 @@ import type {
   EnhanceRequest,
   LlmProviderId,
   ActionItem,
+  Digest,
   AudioImportProgress,
   AudioImportRequest,
   UpdateInfo,
@@ -98,6 +99,11 @@ export interface NitroScribeApi {
     enhance(req: EnhanceRequest): Promise<string>
     /** Extracts (or refreshes) a meeting's action items. */
     actionItems(meetingId: string): Promise<ActionItem[]>
+    /** Streams a follow-up email; returns the request id for onStream. */
+    followUp(meetingId: string): Promise<string>
+    /** Streams the review of the week starting on Monday `week`; returns the request id. */
+    digest(week: string): Promise<string>
+    savedDigest(week: string): Promise<Digest | null>
     chat(req: ChatRequest): Promise<string>
     cancel(requestId: string): Promise<void>
     models(provider: LlmProviderId): Promise<string[]>
