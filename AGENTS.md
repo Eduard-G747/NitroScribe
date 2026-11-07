@@ -38,6 +38,7 @@ End-to-end (Playwright driving the built app; screenshots go to `%TEMP%\nitroscr
 - On a 4 GB GPU, Whisper and a local LLM compete for VRAM, so the app stops `whisper-server` when a recording ends if the AI provider is local. Ollama reloads the model whenever `num_ctx` changes, so context sizes snap to fixed steps.
 - whisper.cpp's built-in Silero VAD (`--vad`) gets slower with every request in release b5454, so it is disabled. Our own energy VAD plus window packing replaces it.
 - `NITROSCRIBE_DATA_DIR` overrides the data folder (used by tests).
+- Unpackaged runs (dev, e2e) use the AppUserModelID `com.eduar.nitroscribe.dev`. Electron can create a Start Menu `Electron.lnk` for an unpackaged app's ID when notifications are touched. If that shortcut has the installed app's ID, Windows shows the Electron icon for the real NitroScribe in the taskbar and in notifications. Delete any such `Electron.lnk` from `%APPDATA%\Microsoft\Windows\Start Menu\Programs`.
 - Pin new dependencies to versions published at least 7 days ago.
 
 ## Privacy model

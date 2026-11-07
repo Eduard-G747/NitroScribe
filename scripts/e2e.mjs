@@ -148,6 +148,8 @@ function dataDir({ onboarded, linkWhisper, calendarUrl, theme = 'light', seed = 
     // Chromium's fake capture device would feed the same file to the "system audio" stream too.
     transcription: { captureSystemAudio: false },
     ai: { provider: 'ollama', providers: { ollama: { baseUrl: 'http://127.0.0.1:11434', model: OLLAMA_MODEL } } },
+    digest: { notify: false },
+    updates: { check: false },
     calendars: calendarUrl ? [{ id: 'demo', name: 'Work', url: calendarUrl, enabled: true }] : []
   }
   writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings))

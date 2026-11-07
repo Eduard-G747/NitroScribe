@@ -60,7 +60,9 @@ if (MAC) app.commandLine.appendSwitch('enable-features', 'MacLoopbackAudioForScr
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  if (process.platform === 'win32') app.setAppUserModelId('com.eduar.nitroscribe')
+  // Dev and test runs get their own ID: Electron may add a Start Menu shortcut for it, and one sharing
+  // the installed app's ID would take over its taskbar and notification icon.
+  if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.eduar.nitroscribe' : 'com.eduar.nitroscribe.dev')
   void app.whenReady().then(main)
 }
 
@@ -312,7 +314,7 @@ async function main() {
   const announceDigest = async () => {
     const s = settings.get()
     const lastWeek = shiftWeek(weekOf(new Date()), -1)
-    if (!s.digest.notify || s.digest.seenWeek === lastWeek || !Notification.isSupported()) return
+    if (!app.isPackaged || !s.digest.notify || s.digest.seenWeek === lastWeek || !Notification.isSupported()) return
     const count = (await meetings.list()).filter((m) => inWeek(m, lastWeek)).length
     if (!count) return
     await settings.update({ digest: { seenWeek: lastWeek } })
